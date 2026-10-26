@@ -17,8 +17,8 @@ nixos/
   default.nix             模块清单：想知道启用了什么，先看这里
   *.nix                   按主题划分的系统模块，见下表
   packages/               自己打包的软件和补丁
-  vr/                     VR 相关模块；自己打包的 VR 软件在 vr/packages/
 home/xkeyc.nix            用户 xkeyc 的 Home Manager 配置
+archive/vr/               已存档的 VR 配置（SteamVR + ALVR、Monado、WiVRn、VIVE Hub、PaperTracker），不参与构建
 private.example/          隐私配置的模板（真正的 private/ 不进 git）
 ```
 
@@ -45,7 +45,6 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `chaos-hdr.nix` | 把 SDR 游戏画面转成 HDR 的 KWin 特效 |
 | `dlss5vklayer.nix` | DLSS 5 Neural Rendering 的游戏插件 |
 | `flclash-tun.nix` | FlClash 代理 TUN 模式需要的特权服务 |
-| `vr/` | VR：SteamVR + ALVR、Monado、WiVRn、VIVE Hub |
 
 ## 自己打包的软件
 
@@ -57,10 +56,10 @@ nixpkgs 里没有，或者 nixpkgs 的版本不能用的软件，在本仓库里
 | [Chaos HDR](https://github.com/chaosfox26/chaos-hdr) | 0.4.3 | 用 NVIDIA TrueHDR 把 SDR 游戏转成 HDR，Alt+Z 打开控制面板 | nixpkgs 没有；上游只提供 Arch 安装脚本 |
 | [DLSS5VKLayer](https://github.com/bmitch87/DLSS5VKLayer) | 0.3.1-2 | 在 Linux 游戏里使用 DLSS 5 Neural Rendering | nixpkgs 没有 |
 | [FlClash](https://github.com/chen08209/FlClash) | 0.9.2 | Clash Meta 代理客户端 | nixpkgs 没有 |
-| [ALVR](https://github.com/alvr-org/ALVR) | 21.0.0-dev | 把 SteamVR 画面无线串流到 VR 一体机 | nixpkgs 的 20.14.1 和新版 SteamVR 不兼容，这里用开发版并加了补丁 |
-| [VIVE Hub](https://github.com/ViveRoboticsSoftware/vivehub-linux) | 1.0.3 | VIVE Ultimate Tracker 的配对和建图工具 | nixpkgs 没有；上游只有闭源预编译包 |
+| [ALVR](https://github.com/alvr-org/ALVR) | 21.0.0-dev | 把 SteamVR 画面无线串流到 VR 一体机（已存档） | nixpkgs 的 20.14.1 和新版 SteamVR 不兼容，这里用开发版并加了补丁 |
+| [VIVE Hub](https://github.com/ViveRoboticsSoftware/vivehub-linux) | 1.0.3 | VIVE Ultimate Tracker 的配对和建图工具（已存档） | nixpkgs 没有；上游只有闭源预编译包 |
 
-打包文件在 `nixos/packages/` 和 `nixos/vr/packages/`。
+打包文件在 `nixos/packages/`；已存档的 VR 软件在 `archive/vr/packages/`，不参与构建，恢复方法见 `archive/vr/default.nix` 开头。
 
 另外有三份外部源码直接从 GitHub 引用（定义在 `flake.nix`，锁定到固定提交）：
 
@@ -123,7 +122,7 @@ sudo nixos-rebuild switch
   改成 `lib.fakeHash`，构建一次，从报错里复制正确的哈希填回去。
   - uu-remote-linux：同时用上游新的 `Cargo.lock` 替换 `nixos/packages/uu-remote-linux.Cargo.lock`。
     如果补丁 `uu-remote-linux-portal-monitor.patch` 打不上，需要按上游新代码重新制作。
-  - ALVR：步骤见 `nixos/vr/packages/alvr/package.nix` 开头的注释。
+  - ALVR（已存档）：步骤见 `archive/vr/packages/alvr/package.nix` 开头的注释。
 
 ### 清理磁盘
 

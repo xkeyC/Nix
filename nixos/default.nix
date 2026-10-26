@@ -20,7 +20,6 @@
     ./chaos-hdr.nix    # NVIDIA TrueHDR KWin 特效（给 SDR 游戏窗口做 HDR）
     ./dlss5vklayer.nix # DLSS 5 Neural Rendering Vulkan 层 + Wine helper
     ./uu-remote.nix    # UU 远程 Linux 被控端（非官方 uu-remote-linux）
-    ./vr               # VR：Monado / WiVRn / ALVR / VIVE Hub
     ./home-manager.nix # 用户级软件包（QQ / FlClash）与 Home Manager 设置
     ./dev-toolchains.nix # 开发工具链（Rust / Python / Node / Flutter / Go / C++）+ nix-ld
   ];

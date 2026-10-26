@@ -1,3 +1,6 @@
+# 【已存档，不参与构建】nixos/default.nix 不再引入本目录。
+# 恢复：`git mv archive/vr nixos/vr`，并在 nixos/default.nix 的 imports 里加回 `./vr`。
+#
 # VR 相关配置。各工具一个文件，自己打包的放 ./packages。
 #
 # 两套运行时，按需启动，都不设成系统默认：
@@ -14,5 +17,6 @@
     ./wivrn.nix
     ./alvr.nix
     ./vivehub.nix
+    ./papertracker.nix
   ];
 }

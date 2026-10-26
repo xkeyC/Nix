@@ -19,9 +19,10 @@
       url = "github:Samuka007/dsh-nix/090ed51b27e65af7c0aadf64dcd7b208030aa3a9";
       flake = false;
     };
-    # DeepSeek Harness 源码，与 dsh-nix 自身锁定的提交相同。
+    # DeepSeek Harness 源码，锁定在发布 tag dsh-v0.2.1-rc.3（比 dsh-nix 自身锁定的新，
+    # 版本号与安装步骤的差异在 home/xkeyc.nix 里覆盖）。
     deepseek-harness = {
-      url = "github:deepseek-ai/deepseek-harness/47f943859bef60e4160492346772ded9b24f765a";
+      url = "github:deepseek-ai/deepseek-harness/1f81c047fc48fa190a683e469daa699857e9afe8";
       flake = false;
     };
 

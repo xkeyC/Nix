@@ -20,13 +20,29 @@ in
     })
   ];
 
-  # dsh-nix 里 pnpm 依赖的哈希与当前 nixpkgs 的 fetchPnpmDeps 不符，这里改成实测值
-  # （原先直接改在 vendor/dsh-nix/pkgs/dsh.nix 里）。
+  # dsh-nix 的打包对应旧版 harness，这里按 flake 里锁定的新版覆盖：
+  # - 版本号、提交号与 pnpm 依赖哈希（实测值）；
+  # - 上游已删除 packages/examples/acp-demo，删掉 dsh-nix 为它生成的失效 wrapper；
+  # - 修正 nixpkgs 的 node 下启动失败的问题（见 postInstall）。
   programs.dsh.package =
     (pkgs.callPackage "${dshNix}/pkgs/dsh.nix" { src = dshSrc; }).overrideAttrs (old: {
+      version = "0.2.1-rc.3";
+      # src 已通过 callPackage 换成新版，只是 overrideAttrs 看不到。
+      __intentionallyOverridingVersion = true;
+      # 构建脚本默认用 `git rev-parse HEAD` 取提交号，沙箱里没有 git 仓库。
+      env = (old.env or { }) // { DSH_CLIENT_COMMIT_HASH = inputs.deepseek-harness.rev; };
       pnpmDeps = old.pnpmDeps.overrideAttrs {
-        outputHash = "sha256-jfwS/aAMqNNS4MY/+OX0DhqnHzuYLDF/qd6E+vq1P4c=";
+        outputHash = "sha256-I9pz1GK1uWwp28RBLfGK4SYqIa9bwf0/hW88kWEuJEQ=";
       };
+      # node-addon-require-builtin 靠匹配 node 二进制里的 getter 指令取内部模块，
+      # nixpkgs 编译的 node 对不上（Unsupported/no-getter），启动即崩。wrapper 本来就带
+      # --expose-internals，这时直接 require，与上游 vendor/loader 的做法一致。
+      postInstall = (old.postInstall or "") + ''
+        rm "$out/bin/dsh-acp-demo"
+        substituteInPlace "$out"/node_modules/.pnpm/node-addon-require-builtin@*/node_modules/node-addon-require-builtin/lib/index.js \
+          --replace-fail "return api.requireBuiltin(moduleId);" \
+            "return process.execArgv.includes('--expose-internals') ? require(moduleId) : api.requireBuiltin(moduleId);"
+      '';
     });
 
   home.username = "xkeyc";

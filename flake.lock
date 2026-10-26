@@ -3,17 +3,17 @@
     "deepseek-harness": {
       "flake": false,
       "locked": {
-        "lastModified": 1786621126,
-        "narHash": "sha256-ZPGCNoPXVjP76Tm/tFPDX2X95cd83M4iHLmVP5dR+Ps=",
+        "lastModified": 1792726176,
+        "narHash": "sha256-wNwpit8WCjltafq+1JFTTFFbH05No60ImlmoJpVz2RQ=",
         "owner": "deepseek-ai",
         "repo": "deepseek-harness",
-        "rev": "47f943859bef60e4160492346772ded9b24f765a",
+        "rev": "1f81c047fc48fa190a683e469daa699857e9afe8",
         "type": "github"
       },
       "original": {
         "owner": "deepseek-ai",
         "repo": "deepseek-harness",
-        "rev": "47f943859bef60e4160492346772ded9b24f765a",
+        "rev": "1f81c047fc48fa190a683e469daa699857e9afe8",
         "type": "github"
       }
     },

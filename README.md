@@ -115,9 +115,10 @@ sudo nixos-rebuild switch
 要升级时，先把 url 里的提交号改成新的，再执行 `nix flake update <名字>`。
 
 - **home-manager**：升级 nixpkgs 时一起升级，否则可能出现选项不匹配的报错。
-- **dsh-nix 和 deepseek-harness**：两者一起升级，`deepseek-harness` 的提交号要和
-  dsh-nix 自己的 `flake.nix` 里写的一致。如果构建报 npm 依赖哈希不匹配，把报错里给出的
-  新哈希填进 `home/xkeyc.nix` 的 `outputHash`。
+- **dsh-nix 和 deepseek-harness**：dsh-nix 更新较慢，`deepseek-harness` 可以单独锁定到
+  上游更新的发布 tag（`dsh-v*`）。这时要同步修改 `home/xkeyc.nix` 里覆盖的 `version`，
+  并把 `outputHash` 改成 `lib.fakeHash` 构建一次，从报错里复制新哈希填回去。新版若改了
+  构建或安装步骤（例如删掉了某个入口），也在那里用 `overrideAttrs` 覆盖。
 - **自己打包的软件**：修改 `version` 或 `rev`，把 `hash`（Rust 软件还有 `cargoHash`）
   改成 `lib.fakeHash`，构建一次，从报错里复制正确的哈希填回去。
   - uu-remote-linux：同时用上游新的 `Cargo.lock` 替换 `nixos/packages/uu-remote-linux.Cargo.lock`。

@@ -68,6 +68,13 @@ in
     '') [ "AC" "Battery" "LowBattery" ]
   );
 
+  # Baloo 默认只索引 ~，这里再显式排除两块 NTFS 数据盘：大批文件的元数据扫描没必要，
+  # 也少一个常驻读写 NTFS 的后台进程。
+  home.activation.configureBaloo = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run ${pkgs.kdePackages.kconfig}/bin/kwriteconfig6 --file baloofilerc \
+      --group General --key "exclude folders" --type path "/mnt/data/,/mnt/application/"
+  '';
+
   # DeepSeek Harness web desktop shell; launch with: dsh --profile web
   programs.dsh = {
     enable = true;

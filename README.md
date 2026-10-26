@@ -12,7 +12,7 @@
 ```
 flake.nix                 入口，定义系统 xkeyc-nixos 和所有外部依赖（输入）
 configuration.nix         安装时生成的模板，只负责引入下面两项
-hardware-configuration.nix  磁盘与内核模块（安装时自动生成）
+hardware-configuration.nix  分区挂载与内核模块（安装时自动生成，磁盘 UUID 已移到 private/）
 nixos/
   default.nix             模块清单：想知道启用了什么，先看这里
   *.nix                   按主题划分的系统模块，见下表
@@ -93,13 +93,16 @@ nix store diff-closures /run/current-system ./result   # 列出将要变化的�
 
 ### 隐私配置（private/）
 
-不想公开的内容（用户初始密码的哈希、git 邮箱）放在 `private/default.nix`。
+不想公开的内容（用户初始密码的哈希、git 邮箱、磁盘 UUID）放在 `private/default.nix`。
 这个目录不进 git，构建时通过 `flake.nix` 里的 `private` 输入单独读取。
 
 - **改完 `private/` 一定要执行 `nix flake update private`**，否则构建会报哈希不匹配。
   这是因为 Nix 把它当作外部依赖，`flake.lock` 里记录了它的哈希。
 - 在新机器上：`cp -r private.example private`，按注释填入真实值，再执行 `nix flake update private`。
   密码哈希用 `mkpasswd -m sha-512` 生成；它只在第一次创建用户时生效，之后改密码用 `passwd`。
+  磁盘 UUID 用 `lsblk -f` 查看。
+- 如果重新运行 `nixos-generate-config` 生成 `hardware-configuration.nix`，新文件里会带回
+  `device = "/dev/disk/by-uuid/..."`：把这些行删掉，UUID 改填到 `private/default.nix`。
 
 ### 升级软件
 

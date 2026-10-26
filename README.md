@@ -40,7 +40,7 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `dns.nix` | DNS：DNSPod、阿里、Cloudflare |
 | `gaming.nix` | Steam，以及 DW-Proton 兼容层 |
 | `dev-toolchains.nix` | 开发工具：gh、Rust、Python、Node、Flutter、Go、C/C++、.NET；git 设置；nix-ld（让下载来的通用 Linux 程序能直接运行） |
-| `home-manager.nix` | 用户软件：QQ、FlClash、Claude Code、Codex |
+| `home-manager.nix` | 用户软件：QQ（`/mnt/data` 没挂载时不启动）、FlClash、Claude Code、Codex |
 | `uu-remote.nix` | UU 远程被控端，以及开机自动登录 |
 | `chaos-hdr.nix` | 把 SDR 游戏画面转成 HDR 的 KWin 特效 |
 | `dlss5vklayer.nix` | DLSS 5 Neural Rendering 的游戏插件 |

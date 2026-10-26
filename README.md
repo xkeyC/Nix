@@ -35,7 +35,7 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `nvidia.nix` | NVIDIA 驱动（开源内核模块）、Docker 的 GPU 支持、CUDA 13；修复了 `nvidia-smi` 启动即崩溃的问题 |
 | `desktop.nix` | KDE Plasma 6、登录界面、XWayland、Noto 字体 |
 | `input-method.nix` | Fcitx5 + RIME 雾凇拼音，作为 Wayland 输入法由 KWin 启动 |
-| `storage.nix` | 挂载 NTFS 数据盘 `/mnt/data` 和 `/mnt/application` |
+| `storage.nix` | 挂载 NTFS 数据盘 `/mnt/data` 和 `/mnt/application`（内核 7.1 起的新 ntfs 驱动，出错转只读） |
 | `power-management.nix` | 关闭睡眠和休眠；空闲 10 分钟只关显示器 |
 | `dns.nix` | DNS：DNSPod、阿里、Cloudflare |
 | `gaming.nix` | Steam，以及 DW-Proton 兼容层 |

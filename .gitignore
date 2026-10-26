@@ -1,0 +1,6 @@
+# 隐私配置：通过 flake.nix 的 private 输入（path:）引入，模板见 private.example/
+/private/
+
+# nix build / nixos-rebuild build 的结果链接
+result
+result-*

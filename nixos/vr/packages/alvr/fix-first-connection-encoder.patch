@@ -1,0 +1,66 @@
+diff --git a/alvr/server_openvr/cpp/alvr_server/HMD.cpp b/alvr/server_openvr/cpp/alvr_server/HMD.cpp
+index 60760a5b..a1c5aa58 100644
+--- a/alvr/server_openvr/cpp/alvr_server/HMD.cpp
++++ b/alvr/server_openvr/cpp/alvr_server/HMD.cpp
+@@ -135,6 +135,9 @@ bool Hmd::activate() {
+                 = std::make_shared<OvrDirectModeComponent>(m_D3DRender, m_poseHistory);
+ #elif __linux__
+             m_directModeComponent = std::make_shared<OvrDirectModeComponent>(m_poseHistory);
++            if (g_streamingRequested) {
++                m_directModeComponent->RequestEncoderReset();
++            }
+ #endif
+         }
+ 
+diff --git a/alvr/server_openvr/cpp/alvr_server/HMD.h b/alvr/server_openvr/cpp/alvr_server/HMD.h
+index 3381657a..e816896e 100644
+--- a/alvr/server_openvr/cpp/alvr_server/HMD.h
++++ b/alvr/server_openvr/cpp/alvr_server/HMD.h
+@@ -3,6 +3,7 @@
+ #include "ALVR-common/packet_types.h"
+ #include "TrackedDevice.h"
+ #include "openvr_driver_wrap.h"
++#include <atomic>
+ #include <memory>
+ #ifdef _WIN32
+ #include "platform/win32/OvrDirectModeComponent.h"
+@@ -22,6 +23,11 @@ class Renderer;
+ #endif
+ class PoseHistory;
+ 
++// Set while a client is streaming. The direct mode component is created when SteamVR
++// activates the HMD, which can happen after the client already connected; it then
++// has to start its encoder on its own.
++extern std::atomic<bool> g_streamingRequested;
++
+ class Hmd : public TrackedDevice, vr::IVRDisplayComponent {
+ public:
+     std::shared_ptr<PoseHistory> m_poseHistory;
+diff --git a/alvr/server_openvr/cpp/alvr_server/alvr_server.cpp b/alvr/server_openvr/cpp/alvr_server/alvr_server.cpp
+index 841709aa..273defee 100644
+--- a/alvr/server_openvr/cpp/alvr_server/alvr_server.cpp
++++ b/alvr/server_openvr/cpp/alvr_server/alvr_server.cpp
+@@ -208,6 +208,7 @@ const char* g_sessionPath;
+ const char* g_driverRootDir;
+ 
+ Settings g_settings;
++std::atomic<bool> g_streamingRequested { false };
+ const Settings* Settings_Instance() { return &g_settings; }
+ 
+ void CppInit(bool earlyHmdInitialization, Settings settings) {
+@@ -237,6 +238,7 @@ bool InitializeStreaming(Settings settings) {
+     g_settings = settings;
+ 
+ #ifdef __linux__
++    g_streamingRequested = true;
+     if (g_driver_provider.hmd && g_driver_provider.hmd->m_directModeComponent) {
+         g_driver_provider.hmd->m_directModeComponent->RequestEncoderReset();
+     }
+@@ -368,6 +370,7 @@ bool InitializeStreaming(Settings settings) {
+ 
+ void DeinitializeStreaming() {
+ #ifdef __linux__
++    g_streamingRequested = false;
+     if (g_driver_provider.hmd && g_driver_provider.hmd->m_directModeComponent) {
+         g_driver_provider.hmd->m_directModeComponent->RequestEncoderShutdown();
+     }

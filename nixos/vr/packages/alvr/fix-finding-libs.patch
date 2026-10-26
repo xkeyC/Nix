@@ -1,0 +1,46 @@
+--- a/alvr/server_openvr/build.rs
++++ b/alvr/server_openvr/build.rs
+@@ -1,34 +1,19 @@
+-use std::{env, path::PathBuf};
++use std::{
++    env,
++    path::{Path, PathBuf},
++};
+ 
+-fn get_vulkan_headers_path(platform_name: &str) -> PathBuf {
+-    alvr_filesystem::deps_dir()
+-        .join(if platform_name == "linux" {
+-            "linux"
+-        } else {
+-            "windows"
+-        })
+-        .join("vulkan-headers/include")
++fn get_vulkan_headers_path(_platform_name: &str) -> PathBuf {
++    Path::new("@vulkanHeaders@/include").to_owned()
+ }
+ 
+-fn get_ffmpeg_path(platform_name: &str) -> PathBuf {
+-    let ffmpeg_path = alvr_filesystem::deps_dir()
+-        .join(if platform_name == "linux" {
+-            "linux"
+-        } else {
+-            "windows"
+-        })
+-        .join("ffmpeg");
+-
+-    if platform_name == "linux" {
+-        ffmpeg_path.join("alvr_build")
+-    } else {
+-        ffmpeg_path
+-    }
++fn get_ffmpeg_path(_platform_name: &str) -> PathBuf {
++    Path::new("@ffmpeg@").to_owned()
+ }
+ 
+ #[cfg(all(target_os = "linux", feature = "gpl"))]
+ fn get_linux_x264_path() -> PathBuf {
+-    alvr_filesystem::deps_dir().join("linux/x264/alvr_build")
++    Path::new("@x264@").to_owned()
+ }
+ 
+ fn main() {

@@ -1,0 +1,2433 @@
+diff --git a/alvr/server_core/src/statistics.rs b/alvr/server_core/src/statistics.rs
+index 6adaa01f..799d98ff 100644
+--- a/alvr/server_core/src/statistics.rs
++++ b/alvr/server_core/src/statistics.rs
+@@ -300,11 +300,18 @@ impl StatisticsManager {
+     pub fn duration_until_next_vsync(&mut self) -> Duration {
+         let now = Instant::now();
+ 
+-        // update the last vsync if it's too old
+-        while self.last_vsync_time + self.frame_interval < now {
+-            self.last_vsync_time += self.frame_interval;
++        let target_vsync = self.last_vsync_time + self.frame_interval;
++        if now < target_vsync {
++            self.last_vsync_time = target_vsync;
++            target_vsync - now
++        } else {
++            // Already missed or at the vsync deadline. Advance last_vsync_time to catch up
++            // with the vsync grid, and return Duration::ZERO so PostPresent does not sleep
++            // an extra full frame.
++            while self.last_vsync_time + self.frame_interval <= now {
++                self.last_vsync_time += self.frame_interval;
++            }
++            Duration::ZERO
+         }
+-
+-        (self.last_vsync_time + self.frame_interval).saturating_duration_since(now)
+     }
+ }
+diff --git a/alvr/server_openvr/cpp/alvr_server/HMD.cpp b/alvr/server_openvr/cpp/alvr_server/HMD.cpp
+index 447c418b..60760a5b 100644
+--- a/alvr/server_openvr/cpp/alvr_server/HMD.cpp
++++ b/alvr/server_openvr/cpp/alvr_server/HMD.cpp
+@@ -62,6 +62,10 @@ Hmd::~Hmd() {
+         m_D3DRender->Shutdown();
+         m_D3DRender.reset();
+     }
++#elif __linux__
++    if (m_directModeComponent) {
++        m_directModeComponent->Teardown();
++    }
+ #endif
+ }
+ 
+diff --git a/alvr/server_openvr/cpp/alvr_server/alvr_server.cpp b/alvr/server_openvr/cpp/alvr_server/alvr_server.cpp
+index a351cbcc..841709aa 100644
+--- a/alvr/server_openvr/cpp/alvr_server/alvr_server.cpp
++++ b/alvr/server_openvr/cpp/alvr_server/alvr_server.cpp
+@@ -164,6 +164,11 @@ public:
+         if (vr::VRServerDriverHost()->IsExiting() && !shutdown_called) {
+             Debug("DriverProvider: Received shutdown event");
+ 
++#ifdef __linux__
++            if (this->hmd && this->hmd->m_directModeComponent) {
++                this->hmd->m_directModeComponent->Teardown();
++            }
++#endif
+             shutdown_called = true;
+             ShutdownRuntime();
+         }
+@@ -196,6 +201,8 @@ const unsigned char* FFR_SHADER_COMP_SPV_PTR;
+ unsigned int FFR_SHADER_COMP_SPV_LEN;
+ const unsigned char* RGBTOYUV420_SHADER_COMP_SPV_PTR;
+ unsigned int RGBTOYUV420_SHADER_COMP_SPV_LEN;
++const unsigned char* LAYER_SHADER_COMP_SPV_PTR;
++unsigned int LAYER_SHADER_COMP_SPV_LEN;
+ 
+ const char* g_sessionPath;
+ const char* g_driverRootDir;
+@@ -371,7 +378,7 @@ void DeinitializeStreaming() {
+     }
+ }
+ 
+-void SendVSync(double offsetSeconds) { vr::VRServerDriverHost()->VsyncEvent(offsetSeconds); }
++void SendVSync() { vr::VRServerDriverHost()->VsyncEvent(0.0); }
+ 
+ void RequestIDR() {
+ #ifdef _WIN32
+diff --git a/alvr/server_openvr/cpp/alvr_server/bindings.h b/alvr/server_openvr/cpp/alvr_server/bindings.h
+index 0d9dd861..072d5106 100644
+--- a/alvr/server_openvr/cpp/alvr_server/bindings.h
++++ b/alvr/server_openvr/cpp/alvr_server/bindings.h
+@@ -192,6 +192,8 @@ extern "C" const unsigned char* FFR_SHADER_COMP_SPV_PTR;
+ extern "C" unsigned int FFR_SHADER_COMP_SPV_LEN;
+ extern "C" const unsigned char* RGBTOYUV420_SHADER_COMP_SPV_PTR;
+ extern "C" unsigned int RGBTOYUV420_SHADER_COMP_SPV_LEN;
++extern "C" const unsigned char* LAYER_SHADER_COMP_SPV_PTR;
++extern "C" unsigned int LAYER_SHADER_COMP_SPV_LEN;
+ 
+ extern "C" const char* g_sessionPath;
+ extern "C" const char* g_driverRootDir;
+@@ -222,22 +224,12 @@ extern "C" void SetOpenvrProps(void* instancePtr, unsigned long long deviceID);
+ extern "C" void RegisterButtons(void* instancePtr, unsigned long long deviceID);
+ extern "C" void WaitForVSync();
+ 
+-// The vsync grid, in Rust. The driver starts and stops the announcer with its own lifetime, holds
+-// Present against the grid, and reads the skipped tick count, without keeping a copy of any of it.
+-extern "C" void StartVsyncAnnouncer();
+-extern "C" void StopVsyncAnnouncer();
+-extern "C" void PaceAfterPresent(unsigned int throttleFrames);
+-extern "C" unsigned int TakeSkippedVsyncs();
+-
+ extern "C" void CppInit(bool earlyHmdInitialization, Settings settings);
+ extern "C" void* CppOpenvrEntryPoint(const char* pInterfaceName, int* pReturnCode);
+ extern "C" void InitializeRuntime();
+ extern "C" bool InitializeStreaming(Settings settings);
+ extern "C" void DeinitializeStreaming();
+-// Called by the vsync grid in Rust, which owns the schedule. Declaring the vsync is the only part
+-// of it that has to stay on this side, because the interface is C++. The offset is in seconds and
+-// runs negative when the announcement lands after the point it describes.
+-extern "C" void SendVSync(double offsetSeconds);
++extern "C" void SendVSync();
+ extern "C" void RequestIDR();
+ extern "C" void SetTracking(
+     unsigned long long targetTimestampNs,
+diff --git a/alvr/server_openvr/cpp/platform/linux/Encoder.hpp b/alvr/server_openvr/cpp/platform/linux/Encoder.hpp
+index b76c0d07..1984de68 100644
+--- a/alvr/server_openvr/cpp/platform/linux/Encoder.hpp
++++ b/alvr/server_openvr/cpp/platform/linux/Encoder.hpp
+@@ -1,6 +1,8 @@
+ #pragma once
+ 
+ #include <fstream>
++#include <functional>
++#include <map>
+ #include <memory>
+ #include <stdexcept>
+ #include <type_traits>
+@@ -108,6 +110,11 @@ class Encoder {
+     bool encoderMissingLogged = false;
+     IDRScheduler idrScheduler;
+ 
++    // SteamVR's per-texture timeline semaphores (SteamVrSync.h), imported
++    // into this device once per handle and kept until SteamVR destroys their
++    // texture or the encoder goes.
++    std::map<u64, vk::Semaphore> timelines;
++
+     // Whether the current pass chain ends in a shader carrying the warp fold,
+     // which is ffr.comp or quad.comp. A colour-correction-only chain does not,
+     // and warping there would move the frame's stamp while leaving the pixels
+@@ -161,8 +168,6 @@ public:
+     }
+ 
+     void initEncoding() {
+-        auto const& settings = Settings_Instance();
+-
+         VkPhysicalDeviceDrmPropertiesEXT drmProps = {};
+         drmProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT;
+ 
+@@ -232,24 +237,88 @@ public:
+             renderer.get().destroy(vkCtx);
+             renderer.reset();
+         }
++        for (auto& [handle, sem] : timelines) {
++            vkCtx.dev.destroy(sem);
++        }
++        timelines.clear();
+         encoderMissingLogged = false;
+     }
+ 
+-    // waitFds are sync_file fds the render submission must wait on before
+-    // sampling the eye textures; ownership transfers here on every path.
++    // Waits until SteamVR's timeline semaphore for a texture reaches value,
++    // the end of the write submitted into it before Present. The semaphore is
++    // imported on first use from dupFd() (Vulkan takes the fd; a failed
++    // import is retried on the next call). Says whether value was reached,
++    // not reached within timeoutNs, or the semaphore could not be imported.
++    enum class TimelineWait { Reached, TimedOut, NotImportable };
++
++    TimelineWait
++    waitTimeline(u64 handle, std::function<int()> const& dupFd, u64 value, u64 timeoutNs) {
++        auto it = timelines.find(handle);
++        if (it == timelines.end()) {
++            int fd = dupFd();
++            if (fd < 0) {
++                return TimelineWait::NotImportable;
++            }
++            vk::SemaphoreTypeCreateInfo typeInfo {
++                .semaphoreType = vk::SemaphoreType::eTimeline,
++                .initialValue = 0,
++            };
++            vk::SemaphoreCreateInfo semInfo {
++                .pNext = &typeInfo,
++            };
++            vk::Semaphore sem;
++            try {
++                sem = vkCtx.dev.createSemaphore(semInfo);
++            } catch (...) {
++                close(fd);
++                return TimelineWait::NotImportable;
++            }
++            vk::ImportSemaphoreFdInfoKHR importInfo {
++                .semaphore = sem,
++                .handleType = vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueFd,
++                .fd = fd,
++            };
++            if (vkCtx.dev.importSemaphoreFdKHR(&importInfo, vkCtx.dispatch)
++                != vk::Result::eSuccess) {
++                close(fd);
++                vkCtx.dev.destroy(sem);
++                return TimelineWait::NotImportable;
++            }
++            it = timelines.emplace(handle, sem).first;
++        }
++        vk::SemaphoreWaitInfo waitInfo {
++            .semaphoreCount = 1,
++            .pSemaphores = &it->second,
++            .pValues = &value,
++        };
++        return vkCtx.dev.waitSemaphores(waitInfo, timeoutNs) == vk::Result::eSuccess
++            ? TimelineWait::Reached
++            : TimelineWait::TimedOut;
++    }
++
++    // Frees what was imported for textures and semaphores SteamVR destroyed.
++    // Call between frames, with the worker kept out (m_encMutex).
++    void releaseTextures(std::vector<u64> const& textures, std::vector<u64> const& semaphores) {
++        if (renderer.hasValue()) {
++            renderer.get().releaseTextures(vkCtx, textures);
++            renderer.get().releaseSemaphores(vkCtx, semaphores);
++        }
++        for (u64 handle : semaphores) {
++            auto it = timelines.find(handle);
++            if (it != timelines.end()) {
++                vkCtx.dev.destroy(it->second);
++                timelines.erase(it);
++            }
++        }
++    }
++
++    // layers[0] is the scene, later layers are blended over it.
+     void present(
+-        u32 leftIdx,
+-        u32 rightIdx,
+         u64 targetTimestampNs,
+         render::WarpParams const& warp,
+-        int const waitFds[2]
++        std::vector<render::Layer> const& layers
+     ) {
+         if (!encoder) {
+-            for (int e = 0; e < 2; ++e) {
+-                if (waitFds[e] >= 0) {
+-                    close(waitFds[e]);
+-                }
+-            }
+             // Say it once instead of at frame rate.
+             if (!encoderMissingLogged) {
+                 Error("Encoder not initialized, skipping frames until it is rebuilt.\n");
+@@ -260,7 +329,7 @@ public:
+         renderer.get().warpParams = warp;
+         ReportPresent(targetTimestampNs, 0);
+         updateFoveationCenters(targetTimestampNs);
+-        renderer.get().render(vkCtx, leftIdx, rightIdx, waitFds);
++        renderer.get().render(vkCtx, layers);
+         ReportComposed(targetTimestampNs, 0);
+ 
+         encoder->SetParams(GetDynamicEncoderParams());
+@@ -326,6 +395,11 @@ public:
+             renderer.reset();
+         }
+ 
++        for (auto& [handle, sem] : timelines) {
++            vkCtx.dev.destroy(sem);
++        }
++        timelines.clear();
++
+         vkCtx.destroy();
+     }
+ };
+diff --git a/alvr/server_openvr/cpp/platform/linux/OvrDirectModeComponent.cpp b/alvr/server_openvr/cpp/platform/linux/OvrDirectModeComponent.cpp
+index 2732f4d4..3eb52352 100644
+--- a/alvr/server_openvr/cpp/platform/linux/OvrDirectModeComponent.cpp
++++ b/alvr/server_openvr/cpp/platform/linux/OvrDirectModeComponent.cpp
+@@ -1,4 +1,6 @@
++#ifndef _GNU_SOURCE
+ #define _GNU_SOURCE
++#endif
+ #include <link.h>
+ #include <stdio.h>
+ #include <sys/socket.h>
+@@ -9,75 +11,26 @@
+ #include <unistd.h>
+ 
+ #include "OvrDirectModeComponent.h"
++#include "SteamVrSync.h"
++#include "TextureTimelineWait.h"
+ 
+ #include "alvr_server/Logger.h"
+ #include "alvr_server/include/openvr_math.h"
++#include <algorithm>
+ #include <cmath>
+ #include <cstring>
+ #include <vector>
+ 
+-#include <linux/dma-buf.h>
+-#include <poll.h>
+-#include <sys/ioctl.h>
+-
+ // Multiples of the frame interval. A job older than this when the worker picks
+ // it up is from a stall, and the swap texture sets are only three deep, so the
+ // slot is close to its next writer.
+ constexpr double JobAgeLimitFrames = 1.5;
+ 
+-// Consecutive writer-fence poll timeouts before the GPU wait disarms for the
+-// session, so a permanently wedged writer degrades the stream once instead of
+-// taxing every frame.
+-constexpr uint32_t GpuWaitDisarmThreshold = 30;
+-
+-// Cap on the writer-fence poll, in frame intervals. The render submission
+-// waits on these fences unboundedly while holding the encoder mutex, which
+-// Present's rebuild paths also take, so an unsignalled fence must be caught
+-// here or it wedges SteamVR's frame loop through the worker built to keep it
+-// free.
+-constexpr int64_t GpuWaitPollCapFrames = 2;
+-
+-// Guard sleep before render, ms. The compositor's own scene writes carry only
+-// detached pre-signaled placeholder fences, so the GPU-side fence wait cannot
+-// see them; this bounds how fresh such a write can be when the read starts.
+-// Runs on the worker, so it costs pipeline depth, not compositor-thread
+-// budget.
+-constexpr int GuardSleepMs = 4;
+-
+ // The negotiated refresh rate expressed as a frame period.
+ static std::chrono::nanoseconds frameInterval() {
+     return std::chrono::nanoseconds((int64_t)(1e9 / Settings_Instance()->m_refreshRate));
+ }
+ 
+-// Export the sync file a reader must wait on (the writer's fences) from a
+-// dma-buf fd. Returns the sync_file fd, or -1 when there is nothing to wait
+-// on or the kernel lacks the ioctl. The caller owns the returned fd.
+-static int exportReadSyncFile(int dmabufFd) {
+-#if defined(DMA_BUF_IOCTL_EXPORT_SYNC_FILE)
+-    struct dma_buf_export_sync_file exportInfo = {};
+-    exportInfo.flags = DMA_BUF_SYNC_READ;
+-    exportInfo.fd = -1;
+-    if (ioctl(dmabufFd, DMA_BUF_IOCTL_EXPORT_SYNC_FILE, &exportInfo) != 0) {
+-        return -1;
+-    }
+-    return exportInfo.fd;
+-#else
+-    (void)dmabufFd;
+-    return -1;
+-#endif
+-}
+-
+-// Close whichever of a job's fence fds are open. Every path that drops a
+-// job without presenting it owes this call.
+-static void closeWaitFds(int fds[2]) {
+-    for (int e = 0; e < 2; ++e) {
+-        if (fds[e] >= 0) {
+-            close(fds[e]);
+-            fds[e] = -1;
+-        }
+-    }
+-}
+-
+ // Loose on purpose: it rejects zeroed and uninitialized poses, which miss by
+ // orders of magnitude, not accumulated rounding drift.
+ constexpr double UnitQuatNormSqTolerance = 0.1;
+@@ -149,14 +102,14 @@ OvrDirectModeComponent::OvrDirectModeComponent(std::shared_ptr<PoseHistory> pose
+     : m_poseHistory(poseHistory)
+     , m_submitLayer(0) {
+     m_encodeWorker = std::thread(&OvrDirectModeComponent::EncodeWorkerLoop, this);
+-    StartVsyncAnnouncer();
+ }
+ 
+-OvrDirectModeComponent::~OvrDirectModeComponent() {
+-    // Stops before the encode worker: the announcer's grid is what
+-    // PostPresent holds against, and a hold outliving the worker leaves a
+-    // present waiting on a frame nothing will encode.
+-    StopVsyncAnnouncer();
++void OvrDirectModeComponent::Teardown() {
++    static std::atomic<bool> tornDown { false };
++    if (tornDown.exchange(true)) {
++        return;
++    }
++    Info("OvrDirectModeComponent::Teardown: cleaning up resources\n");
+     {
+         std::lock_guard<std::mutex> lock(m_jobMutex);
+         m_workerExit = true;
+@@ -166,20 +119,37 @@ OvrDirectModeComponent::~OvrDirectModeComponent() {
+     if (m_encodeWorker.joinable()) {
+         m_encodeWorker.join();
+     }
+-    // The worker is gone; whatever job was pending will never present.
+-    closeWaitFds(m_job.waitFds);
+-    for (int fd : m_syncFds) {
+-        if (fd >= 0) {
+-            close(fd);
++
++    m_presentMutex.lock();
++    std::vector<ProcessResource*> resourcesToDestroy;
++    for (auto it = m_handleMap.begin(); it != m_handleMap.end(); ++it) {
++        if (it->second.second == 0) {
++            resourcesToDestroy.push_back(it->second.first);
++        }
++    }
++    std::vector<vr::SharedTextureHandle_t> textures;
++    for (auto* p : resourcesToDestroy) {
++        for (int i = 0; i < 3; ++i) {
++            if (p->sharedHandles[i] != 0) {
++                textures.push_back(p->sharedHandles[i]);
++            }
+         }
+     }
++    if (!textures.empty()) {
++        ForgetTextures(textures);
++    }
++    for (auto* p : resourcesToDestroy) {
++        CleanupProcessResource(p);
++    }
++    m_handleMap.clear();
++    m_presentMutex.unlock();
++    steamvrsync::Sync::Get().ForgetAll();
+ }
+ 
++OvrDirectModeComponent::~OvrDirectModeComponent() { Teardown(); }
++
+ void OvrDirectModeComponent::DrainPendingJob() {
+     std::lock_guard<std::mutex> lock(m_jobMutex);
+-    if (m_jobPending) {
+-        closeWaitFds(m_job.waitFds);
+-    }
+     m_jobPending = false;
+ }
+ 
+@@ -200,76 +170,60 @@ void OvrDirectModeComponent::EncodeWorkerLoop() {
+             frameInterval() * JobAgeLimitFrames
+         );
+         if (std::chrono::steady_clock::now() - job.enqueueTime > ageLimit) {
+-            closeWaitFds(job.waitFds);
+             continue;
+         }
+ 
+-        // Bounded gate on the writer's fences, before the encoder lock. On
+-        // timeout close the fds and present unguarded instead of wedging.
+-        if (job.waitFds[0] >= 0 || job.waitFds[1] >= 0) {
+-            bool dropFds = m_gpuWaitPollDisarmed;
+-            if (!dropFds) {
+-                struct pollfd pfds[2] = {};
+-                nfds_t count = 0;
+-                for (int e = 0; e < 2; ++e) {
+-                    if (job.waitFds[e] >= 0) {
+-                        pfds[count].fd = job.waitFds[e];
+-                        pfds[count].events = POLLIN;
+-                        ++count;
+-                    }
+-                }
+-                auto const capNs = frameInterval() * GpuWaitPollCapFrames;
+-                auto const deadline = std::chrono::steady_clock::now() + capNs;
+-                bool allSignaled = false;
+-                while (!allSignaled) {
+-                    int remainingMs = (int)std::chrono::duration_cast<std::chrono::milliseconds>(
+-                                          deadline - std::chrono::steady_clock::now()
+-                    )
+-                                          .count();
+-                    if (remainingMs < 0) {
+-                        break;
+-                    }
+-                    if (poll(pfds, count, remainingMs) <= 0) {
+-                        break;
+-                    }
+-                    allSignaled = true;
+-                    for (nfds_t i = 0; i < count; ++i) {
+-                        if ((pfds[i].revents & POLLIN) == 0) {
+-                            allSignaled = false;
+-                        }
+-                    }
+-                }
+-                if (allSignaled) {
+-                    m_gpuWaitConsecTimeouts = 0;
+-                } else {
+-                    dropFds = true;
+-                    if (++m_gpuWaitConsecTimeouts >= GpuWaitDisarmThreshold) {
+-                        m_gpuWaitPollDisarmed = true;
+-                        Info(
+-                            "Encode worker: writer fences timed out %u frames in a row; "
+-                            "GPU wait disarmed for this session\n",
+-                            m_gpuWaitConsecTimeouts
+-                        );
+-                    }
+-                }
+-            }
+-            if (dropFds) {
+-                closeWaitFds(job.waitFds);
+-            }
+-        }
+-
+-        if (GuardSleepMs > 0) {
+-            std::this_thread::sleep_for(std::chrono::milliseconds(GuardSleepMs));
+-        }
+-
+         try {
+             std::lock_guard<std::mutex> encLock(m_encMutex);
+ 
+             if (job.generation != m_encGeneration) {
+-                closeWaitFds(job.waitFds);
+                 continue;
+             }
+ 
++            constexpr double TimelineWaitBudgetFrames = 8.0;
++            auto const timelineCapNs
++                = (uint64_t)(frameInterval().count() * TimelineWaitBudgetFrames);
++            bool const confirmed = alvr::waitForTextureTimelines(
++                job.waits,
++                std::chrono::nanoseconds(timelineCapNs),
++                [&](auto const& wait, uint64_t timeoutNs) {
++                    uint64_t const semaphore = wait.semaphore;
++                    auto const result = enc.waitTimeline(
++                        semaphore,
++                        [semaphore] { return steamvrsync::Sync::Get().DupFd(semaphore); },
++                        wait.value,
++                        timeoutNs
++                    );
++                    if (result == alvr::Encoder::TimelineWait::Reached) {
++                        return true;
++                    }
++                    Warn(
++                        "SteamVR texture semaphore %llx %s\n",
++                        (unsigned long long)semaphore,
++                        result == alvr::Encoder::TimelineWait::NotImportable
++                            ? "could not be imported"
++                            : "not reached within the wait cap"
++                    );
++                    return false;
++                }
++            );
++            if (!confirmed) {
++                ++m_unconfirmedSkips;
++                Warn(
++                    "Skipping an unconfirmed SteamVR frame (%llu in a row); the client keeps the "
++                    "last one\n",
++                    (unsigned long long)m_unconfirmedSkips
++                );
++                continue;
++            }
++            if (m_unconfirmedSkips != 0) {
++                Info(
++                    "SteamVR texture timeline recovered after %llu skipped frames\n",
++                    (unsigned long long)m_unconfirmedSkips
++                );
++            }
++            m_unconfirmedSkips = 0;
++
+             // Rotationally reproject the frame from the pose it was rendered
+             // with to the newest tracking pose, then stamp it with that pose's
+             // timestamp: after the warp the newest pose is the image's pose,
+@@ -302,14 +256,12 @@ void OvrDirectModeComponent::EncodeWorkerLoop() {
+                 }
+             }
+ 
+-            enc.present(job.leftIdx, job.rightIdx, stampTimestampNs, warpParams, job.waitFds);
++            enc.present(stampTimestampNs, warpParams, job.layers);
+         } catch (std::exception const& e) {
+             // An exception escaping a thread's start function is
+             // std::terminate, which takes vrserver with it. Same recovery as
+             // the compositor-thread paths: log, tear the encoder down, go
+             // idle until the next client connect.
+-            // The job's fds may be partially consumed by the throw point, so
+-            // they are deliberately not closed here.
+             Error("Encode worker: %s. Tearing down encoder and going idle.\n", e.what());
+             std::lock_guard<std::mutex> encLock(m_encMutex);
+             // The try block's lock released when the exception left it, so a
+@@ -381,15 +333,15 @@ void OvrDirectModeComponent::CreateSwapTextureSet(
+             &myHandle
+         );
+ 
+-        uint64_t ipcHandle = 0;
+-        vr::VRIPCResourceManager()->RefResource(myHandle, &ipcHandle);
+-
+         if (!success) {
+             Error("VRCIPCResourceManager: Failed to create shared texture\n");
+             CleanupProcessResource(processResource);
+             return;
+         }
+ 
++        uint64_t ipcHandle = 0;
++        vr::VRIPCResourceManager()->RefResource(myHandle, &ipcHandle);
++
+         int fd = 0;
+         auto ret = vr::VRIPCResourceManager()->ReceiveSharedFd(ipcHandle, &fd);
+         if (ret == false) {
+@@ -402,9 +354,12 @@ void OvrDirectModeComponent::CreateSwapTextureSet(
+         processResource->fds[i] = fd;
+         processResource->sharedHandles[i] = myHandle;
+ 
+-        m_handleMap.insert(
+-            std::make_pair(processResource->sharedHandles[i], std::make_pair(processResource, i))
+-        );
++        {
++            std::lock_guard<std::mutex> lock(m_presentMutex);
++            m_handleMap.insert(std::make_pair(
++                processResource->sharedHandles[i], std::make_pair(processResource, i)
++            ));
++        }
+         pOutSwapTextureSet->rSharedTextureHandles[i] = myHandle;
+         Info("Created Texture %d %p\n", i, processResource->sharedHandles[i]);
+     }
+@@ -419,6 +374,15 @@ void OvrDirectModeComponent::DestroySwapTextureSet(vr::SharedTextureHandle_t sha
+     auto id = m_handleMap.find(sharedTextureHandle);
+     if (id != m_handleMap.end()) {
+         ProcessResource* p = id->second.first;
++        std::vector<vr::SharedTextureHandle_t> textures;
++        for (int i = 0; i < 3; ++i) {
++            if (p->sharedHandles[i] != 0) {
++                textures.push_back(p->sharedHandles[i]);
++            }
++        }
++        if (!textures.empty()) {
++            ForgetTextures(textures);
++        }
+         CleanupProcessResource(p);
+     } else {
+         Debug("Requested to destroy not managing texture. handle:%p\n", sharedTextureHandle);
+@@ -437,12 +401,50 @@ void OvrDirectModeComponent::DestroyAllSwapTextureSets(uint32_t unPid) {
+             resourcesToDestroy.push_back(it->second.first);
+         }
+     }
++    std::vector<vr::SharedTextureHandle_t> textures;
++    for (auto* p : resourcesToDestroy) {
++        for (int i = 0; i < 3; ++i) {
++            if (p->sharedHandles[i] != 0) {
++                textures.push_back(p->sharedHandles[i]);
++            }
++        }
++    }
++    if (!textures.empty()) {
++        ForgetTextures(textures);
++    }
+     for (auto* p : resourcesToDestroy) {
+         CleanupProcessResource(p);
+     }
+     m_presentMutex.unlock();
+ }
+ 
++void OvrDirectModeComponent::ForgetTextures(std::vector<vr::SharedTextureHandle_t> const& textures
++) {
++    // A pending or in-flight job may still name these textures. Drop the
++    // pending one, then take the encoder lock (waits for a frame being read)
++    // and move the generation so a job the worker already holds is dropped
++    // instead of importing an fd that is about to be closed.
++    {
++        std::lock_guard<std::mutex> lock(m_destroyedMutex);
++        for (auto texture : textures) {
++            m_destroyed.push_back(texture);
++        }
++        while (m_destroyed.size() > MaxDestroyedRemembered) {
++            m_destroyed.pop_front();
++        }
++    }
++    DrainPendingJob();
++    std::lock_guard<std::mutex> encLock(m_encMutex);
++    m_encGeneration++;
++    std::vector<uint64_t> semaphores = steamvrsync::Sync::Get().Forget(textures);
++    enc.releaseTextures(textures, semaphores);
++}
++
++bool OvrDirectModeComponent::WasDestroyed(vr::SharedTextureHandle_t texture) {
++    std::lock_guard<std::mutex> lock(m_destroyedMutex);
++    return std::find(m_destroyed.begin(), m_destroyed.end(), texture) != m_destroyed.end();
++}
++
+ void OvrDirectModeComponent::CleanupProcessResource(ProcessResource* processResource) {
+     for (int i = 0; i < 3; i++) {
+         if (processResource->sharedHandles[i]) {
+@@ -523,7 +525,28 @@ void OvrDirectModeComponent::SubmitLayer(const SubmitLayerPerEye_t (&perEye)[2])
+ 
+ /** Submits queued layers for display. */
+ void OvrDirectModeComponent::Present(vr::SharedTextureHandle_t syncTexture) {
+-    m_submitLayer = 0;
++    (void)syncTexture;
++    std::optional<alvr::render::Layer> layer0;
++    std::vector<alvr::render::Layer> overlayLayers;
++    vr::SharedTextureHandle_t layer0Handles[2] = { 0, 0 };
++
++    {
++        std::lock_guard<std::mutex> lock(m_presentMutex);
++        int const layerCount = std::min(m_submitLayer, MAX_LAYERS);
++        m_submitLayer = 0;
++
++        layer0Handles[0] = m_submitLayers[0][0].hTexture;
++        layer0Handles[1] = m_submitLayers[0][1].hTexture;
++
++        layer0 = SubmittedLayer(0);
++        if (layer0) {
++            for (int i = 1; i < layerCount; ++i) {
++                if (auto layer = SubmittedLayer(i)) {
++                    overlayLayers.push_back(*layer);
++                }
++            }
++        }
++    }
+ 
+     switch (m_encoderState.load()) {
+     case EncoderState::RebuildRequested: {
+@@ -532,7 +555,7 @@ void OvrDirectModeComponent::Present(vr::SharedTextureHandle_t syncTexture) {
+         std::lock_guard<std::mutex> encLock(m_encMutex);
+         m_encGeneration++;
+         enc.shutdown();
+-        layer0Texts.fill(0);
++        m_encoderReady = false;
+         m_encoderState = EncoderState::Streaming;
+         break;
+     }
+@@ -541,7 +564,7 @@ void OvrDirectModeComponent::Present(vr::SharedTextureHandle_t syncTexture) {
+         std::lock_guard<std::mutex> encLock(m_encMutex);
+         m_encGeneration++;
+         enc.shutdown();
+-        layer0Texts.fill(0);
++        m_encoderReady = false;
+         m_encoderState = EncoderState::Idle;
+         return;
+     }
+@@ -554,85 +577,35 @@ void OvrDirectModeComponent::Present(vr::SharedTextureHandle_t syncTexture) {
+         break;
+     }
+ 
+-    std::optional<u32> leftIdx;
+-    std::optional<u32> rightIdx;
+-
+-    for (u32 i = 0; i < layer0Texts.size(); ++i) {
+-        if (layer0Texts[i] == m_submitLayers[0][0].hTexture)
+-            leftIdx = i;
+-
+-        if (layer0Texts[i] == m_submitLayers[0][1].hTexture)
+-            rightIdx = i;
+-    }
+-
+-    if (!leftIdx.has_value() || !rightIdx.has_value()) {
+-        auto leftIt = m_handleMap.find(m_submitLayers[0][0].hTexture);
+-        auto rightIt = m_handleMap.find(m_submitLayers[0][1].hTexture);
+-
+-        if (leftIt == m_handleMap.end() || rightIt == m_handleMap.end()) {
+-            Error(
+-                "Textures not found in handle map %llu, %llu\n",
+-                m_submitLayers[0][0].hTexture,
+-                m_submitLayers[0][1].hTexture
++    if (!layer0) {
++        // When an application exits, SteamVR destroys its texture sets and
++        // the compositor still presents one last frame naming them. That
++        // frame is skipped quietly; textures never seen are still an error.
++        if (WasDestroyed(layer0Handles[0]) || WasDestroyed(layer0Handles[1])) {
++            Debug(
++                "Skipping a frame whose textures SteamVR just destroyed %llu, %llu\n",
++                layer0Handles[0],
++                layer0Handles[1]
+             );
+             return;
+         }
++        Error("Textures not found in handle map %llu, %llu\n", layer0Handles[0], layer0Handles[1]);
++        return;
++    }
+ 
+-        std::array<int, 6> fds;
+-
+-        // Vulkan takes ownership of an fd when it imports it, so the copies kept
+-        // in the handle map are only good for a single import. Hand it a dup
+-        // every time or the next rebuild fails with InvalidExternalHandle.
+-        for (u32 i = 0; i < 3; ++i) {
+-            layer0Texts[i] = leftIt->second.first->sharedHandles[i];
+-            fds[i] = dup(leftIt->second.first->fds[i]);
+-        }
+-        for (u32 i = 0; i < 3; ++i) {
+-            layer0Texts[i + 3] = rightIt->second.first->sharedHandles[i];
+-            fds[i + 3] = dup(rightIt->second.first->fds[i]);
+-        }
+-
+-        for (u32 i = 0; i < fds.size(); ++i) {
+-            if (fds[i] == -1) {
+-                Error("Could not duplicate texture fd %u, skipping encoder setup\n", i);
+-                for (u32 j = 0; j < fds.size(); ++j) {
+-                    if (fds[j] != -1)
+-                        close(fds[j]);
+-                }
+-                layer0Texts.fill(0);
+-                return;
+-            }
+-        }
+-
+-        // Keep a second dup of each texture fd for exporting write fences at
+-        // Present; Vulkan consumes the import dups below.
+-        for (u32 i = 0; i < fds.size(); ++i) {
+-            if (m_syncFds[i] >= 0) {
+-                close(m_syncFds[i]);
+-            }
+-            m_syncFds[i] = dup(fds[i]);
+-        }
+-
++    if (!m_encoderReady) {
+         auto const& settings = Settings_Instance();
+-
+-        // Hopefully it's the same for both eyes in a layer
+-        auto& desc = leftIt->second.first->textDesc;
+-
+         alvr::render::RendererCreateInfo rendererCI {
+-            .format = (vk::Format)(VkFormat)desc.nFormat,
+-            .inputEyeExtent {
+-                .width = desc.nWidth,
+-                .height = desc.nHeight,
+-            },
++            .format = layer0->format,
++            .inputEyeExtent = layer0->extent,
+             .outputExtent {
+-                .width = settings->m_recommendedTargetWidth,
+-                .height = settings->m_recommendedTargetHeight,
++                .width = static_cast<uint32_t>(settings->m_recommendedTargetWidth),
++                .height = static_cast<uint32_t>(settings->m_recommendedTargetHeight),
+             },
+-            .inputImgFds = fds,
+         };
+ 
+-        // Renderer and encoder setup can throw (Vulkan import, VAAPI). An
+-        // exception escaping Present kills vrserver, so log and stay idle.
++        // Renderer and encoder setup can throw (Vulkan, VAAPI). An exception
++        // escaping Present kills vrserver, so log and stay idle.
+         DrainPendingJob();
+         std::lock_guard<std::mutex> encLock(m_encMutex);
+         m_encGeneration++;
+@@ -640,13 +613,13 @@ void OvrDirectModeComponent::Present(vr::SharedTextureHandle_t syncTexture) {
+         try {
+             enc.createImages(rendererCI);
+             enc.initEncoding();
++            m_encoderReady = true;
+         } catch (std::exception const& e) {
+             Error(
+                 "Could not set up the encoder: %s. Staying idle until the next client connect.\n",
+                 e.what()
+             );
+             enc.shutdown();
+-            layer0Texts.fill(0);
+             m_encoderState = EncoderState::Idle;
+         }
+ 
+@@ -654,89 +627,106 @@ void OvrDirectModeComponent::Present(vr::SharedTextureHandle_t syncTexture) {
+         return;
+     }
+ 
+-    // TODO: Merge layers or something
+-
+     FrameJob job {};
+-    job.leftIdx = leftIdx.value();
+-    job.rightIdx = rightIdx.value();
++    job.layers.push_back(*layer0);
++    // Layers 1..n (SteamVR's dashboard and other overlays while a scene
++    // application runs) are blended over layer 0. A layer whose textures are
++    // not ours is skipped rather than dropping the frame.
++    job.layers.insert(job.layers.end(), overlayLayers.begin(), overlayLayers.end());
+     job.targetTimestampNs = m_targetTimestampNs;
+     job.renderOrientation = m_framePoseRotation;
+     job.generation = m_encGeneration;
+     job.enqueueTime = std::chrono::steady_clock::now();
+ 
+-    // Export each eye's write fences so the render submission starts exactly
+-    // when the writer finishes. Both eyes or neither: a single armed eye
+-    // would order one read correctly and leave the other racing, which is
+-    // strictly harder to diagnose than the symmetric fallback.
+-    {
+-        u32 const eyeSlot[2] = { leftIdx.value(), rightIdx.value() };
+-        for (int e = 0; e < 2; ++e) {
+-            if (m_syncFds[eyeSlot[e]] >= 0) {
+-                job.waitFds[e] = exportReadSyncFile(m_syncFds[eyeSlot[e]]);
++    // What marks the end of each texture's write: SteamVR's timeline
++    // semaphore and its value, read now (by the worker SteamVR may already
++    // have submitted the next write into the same texture).
++    auto& sync = steamvrsync::Sync::Get();
++    for (auto const& layer : job.layers) {
++        for (auto const& eye : layer.eyes) {
++            uint64_t const semaphore = sync.SemaphoreOf(eye.handle);
++            uint64_t value = 0;
++            if (semaphore != 0 && sync.Value(semaphore, &value)) {
++                job.waits.push_back({ semaphore, value });
+             }
+         }
+-        if (job.waitFds[0] < 0 || job.waitFds[1] < 0) {
+-            closeWaitFds(job.waitFds);
+-        }
+     }
+ 
+     {
+         std::lock_guard<std::mutex> lock(m_jobMutex);
+         if (m_workerExit) {
+             // Teardown already drained the mailbox; do not repopulate it.
+-            closeWaitFds(job.waitFds);
+             return;
+         }
+-        // Latest wins: a still-pending job is replaced, and its fences will
+-        // never be waited on, so close them here.
+-        if (m_jobPending) {
+-            closeWaitFds(m_job.waitFds);
+-        }
+         m_job = job;
+         m_jobPending = true;
+     }
+     m_jobCv.notify_one();
+ }
+ 
+-void OvrDirectModeComponent::PostPresent(const Throttling_t* pThrottling) {
+-    // Prop_Hmd_SupportsAppThrottling_Bool is set, so SteamVR sends throttle
+-    // hints here and predicts poses assuming we honor them. Ignoring them
+-    // while it throttles an app predicts poses for a cadence we are not
+-    // keeping, which reprojects the world against head motion.
+-    uint32_t throttleFrames = 0;
+-    if (pThrottling != nullptr) {
+-        throttleFrames = pThrottling->nFramesToThrottle;
+-        if (pThrottling->nFramesToThrottle != m_lastThrottleFrames
+-            || pThrottling->nAdditionalFramesToPredict != m_lastPredictFrames) {
+-            m_lastThrottleFrames = pThrottling->nFramesToThrottle;
+-            m_lastPredictFrames = pThrottling->nAdditionalFramesToPredict;
+-            Info(
+-                "Throttling: framesToThrottle=%u additionalFramesToPredict=%u\n",
+-                pThrottling->nFramesToThrottle,
+-                pThrottling->nAdditionalFramesToPredict
+-            );
++std::optional<alvr::render::Layer> OvrDirectModeComponent::SubmittedLayer(int i) {
++    alvr::render::Layer layer;
++    for (int eye = 0; eye < 2; ++eye) {
++        auto const& submitted = m_submitLayers[i][eye];
++        auto it = m_handleMap.find(submitted.hTexture);
++        if (it == m_handleMap.end()) {
++            return std::nullopt;
++        }
++        auto const& b = submitted.bounds;
++        if (!std::isfinite(b.uMin) || !std::isfinite(b.uMax) || !std::isfinite(b.vMin)
++            || !std::isfinite(b.vMax) || b.uMin < 0.f || b.uMin > 1.f || b.uMax < 0.f
++            || b.uMax > 1.f || b.vMin < 0.f || b.vMin > 1.f || b.vMax < 0.f || b.vMax > 1.f
++            || b.uMin == b.uMax || b.vMin == b.vMax) {
++            Warn("Invalid texture bounds for layer %d eye %d; skipping it\n", i, eye);
++            return std::nullopt;
+         }
++        auto const* resource = it->second.first;
++        auto format = (vk::Format)(VkFormat)resource->textDesc.nFormat;
++        auto extent = vk::Extent2D { .width = resource->textDesc.nWidth,
++                                     .height = resource->textDesc.nHeight };
++        if (eye == 0) {
++            layer.format = format;
++            layer.extent = extent;
++        } else if (layer.format != format || layer.extent != extent) {
++            Warn("Mismatched format or extent between eyes for layer %d; skipping it\n", i);
++            return std::nullopt;
++        }
++        layer.eyes[eye] = {
++            .handle = submitted.hTexture,
++            .fd = resource->fds[it->second.second],
++            .uMin = b.uMin,
++            .vMin = b.vMin,
++            .uMax = b.uMax,
++            .vMax = b.vMax,
++        };
+     }
++    return layer;
++}
+ 
+-    PaceAfterPresent(throttleFrames);
++void OvrDirectModeComponent::PostPresent(const Throttling_t* pThrottling) {
++    WaitForVSync();
++    if (pThrottling) {
++        uint32_t const additional = std::min(pThrottling->nAdditionalFramesToPredict, 0xfu);
++        uint32_t const throttle = std::min(pThrottling->nFramesToThrottle, 0xfu);
++        m_reprojectionFlags.store(
++            vr::VRCompositor_ReprojectionMotion | (additional << 4) | (throttle << 8),
++            std::memory_order_relaxed
++        );
++    }
++    vr::VRServerDriverHost()->VsyncEvent(0.0);
+ }
+ 
+ void OvrDirectModeComponent::GetFrameTiming(vr::DriverDirectMode_FrameTiming* pFrameTiming) {
+-    if (pFrameTiming == nullptr
+-        || pFrameTiming->m_nSize < sizeof(vr::DriverDirectMode_FrameTiming)) {
++    if (!pFrameTiming) {
+         return;
+     }
+-
+-    // Skipped ticks are not reported as dropped frames: the compositor reads a
+-    // drop as GPU overload and enables interleaved reprojection, which halves
+-    // the rate, so the grid then skips a tick every frame and reports another
+-    // drop, throttled from then on. Consume the counter without reporting it
+-    // until there is a channel that does not throttle.
+-    (void)TakeSkippedVsyncs();
++    pFrameTiming->m_nSize = sizeof(vr::DriverDirectMode_FrameTiming);
+     pFrameTiming->m_nNumFramePresents = 1;
+     pFrameTiming->m_nNumMisPresented = 0;
+     pFrameTiming->m_nNumDroppedFrames = 0;
+-    // These bits overlap the throttle mask and must not be echoed back
+-    // unhandled, per the interface header.
++    // Per openvr_driver.h: VRCompositor_ReprojectionMotion_XXX flags get passed in,
++    // and since these overlap with VRCompositor_ThrottleMask, they need to be cleared out
++    // if not implemented/unhandled; otherwise, those settings get interpreted as forcing
++    // throttling.
+     pFrameTiming->m_nReprojectionFlags = 0;
+ }
+diff --git a/alvr/server_openvr/cpp/platform/linux/OvrDirectModeComponent.h b/alvr/server_openvr/cpp/platform/linux/OvrDirectModeComponent.h
+index e064e78e..61817647 100644
+--- a/alvr/server_openvr/cpp/platform/linux/OvrDirectModeComponent.h
++++ b/alvr/server_openvr/cpp/platform/linux/OvrDirectModeComponent.h
+@@ -9,9 +9,13 @@
+ #include <atomic>
+ #include <chrono>
+ #include <condition_variable>
++#include <deque>
+ #include <map>
+ #include <mutex>
++#include <optional>
++#include <set>
+ #include <thread>
++#include <vector>
+ 
+ #include <vulkan/vulkan.h>
+ 
+@@ -24,6 +28,8 @@ public:
+     );
+     ~OvrDirectModeComponent();
+ 
++    void Teardown();
++
+     void RequestIdr() { enc.requestIdr(); }
+ 
+     // Called from the event loop thread when negotiated settings arrive.
+@@ -86,8 +92,21 @@ private:
+     };
+     std::map<vr::SharedTextureHandle_t, std::pair<ProcessResource*, int>> m_handleMap;
+     void CleanupProcessResource(ProcessResource* processResource);
+-
+-    static const int MAX_LAYERS = 10;
++    // Frees what the encoder and the semaphore lookup kept for textures
++    // SteamVR is destroying. Called before CleanupProcessResource.
++    void ForgetTextures(std::vector<vr::SharedTextureHandle_t> const& textures);
++    // The textures of the last few sets SteamVR destroyed, to tell the one
++    // frame the compositor presents with them after an application exits
++    // from a texture that was never ours.
++    static constexpr size_t MaxDestroyedRemembered = 64;
++    std::mutex m_destroyedMutex;
++    std::deque<vr::SharedTextureHandle_t> m_destroyed;
++    bool WasDestroyed(vr::SharedTextureHandle_t texture);
++    // Layer i of the frame being presented, or nothing when one of its
++    // textures is not one of ours or its bounds are invalid.
++    std::optional<alvr::render::Layer> SubmittedLayer(int i);
++
++    static constexpr int MAX_LAYERS = 10;
+     int m_submitLayer;
+     SubmitLayerPerEye_t m_submitLayers[MAX_LAYERS][2];
+     vr::HmdQuaternion_t m_prevFramePoseRotation;
+@@ -97,7 +116,9 @@ private:
+     // Track current texture index for each eye to avoid UB with uninitialized data
+     std::map<ProcessResource*, uint32_t> m_swapchainIndices;
+ 
+-    std::array<vr::SharedTextureHandle_t, 6> layer0Texts {};
++    // The renderer and encoder are built from the first layer 0 texture set
++    // after a connect or rebuild; later sets are taken by handle.
++    bool m_encoderReady = false;
+ 
+     alvr::Encoder enc;
+ 
+@@ -108,16 +129,12 @@ private:
+ 
+     std::mutex m_presentMutex;
+ 
+-    // Last throttle hints, for change logging only.
+-    uint32_t m_lastThrottleFrames = 0;
+-    uint32_t m_lastPredictFrames = 0;
+-
+     // Single-slot latest-wins mailbox: at steady state the worker drains
+     // faster than frames arrive, and if it falls behind, the newest frame
+     // replaces the stale pending one.
+     struct FrameJob {
+-        uint32_t leftIdx;
+-        uint32_t rightIdx;
++        // Layer 0 first, then the overlays to blend over it.
++        std::vector<alvr::render::Layer> layers;
+         uint64_t targetTimestampNs;
+         // Orientation the layer was rendered with, captured in Present. The
+         // worker needs it to build the reprojection, and it cannot read
+@@ -128,10 +145,8 @@ private:
+         // discards the job if the generation moved (rebuild, shutdown, set
+         // switch) between enqueue and processing.
+         uint64_t generation;
+-        // sync_file fds exported from the eye textures' write fences in
+-        // Present. Owned by the job: every path that drops the job without
+-        // presenting it must close them.
+-        int waitFds[2] = { -1, -1 };
++        // SteamVR's timeline semaphores and target values read at Present.
++        std::vector<alvr::render::SemaphoreWait> waits;
+         std::chrono::steady_clock::time_point enqueueTime;
+     };
+     void EncodeWorkerLoop();
+@@ -154,20 +169,16 @@ private:
+     // instead of presenting old indices against rebuilt state.
+     uint64_t m_encGeneration = 0;
+ 
+-    // A second dup of each imported texture fd, kept for exporting the
+-    // writer's fences at Present. Replaced wholesale on every texture-set
+-    // switch, so stale sets never accumulate.
+-    int m_syncFds[6] = { -1, -1, -1, -1, -1, -1 };
+-    // Consecutive writer-fence poll timeouts; at the threshold the GPU wait
+-    // disarms for the session so a wedged writer degrades the stream once
+-    // instead of taxing every frame.
+-    uint32_t m_gpuWaitConsecTimeouts = 0;
+-    bool m_gpuWaitPollDisarmed = false;
+-
+     // Written by the event loop thread in SetViewParams, read by the worker.
+     // Invalid until the client's projection arrives, and the reprojection
+     // stays off until then because it has no FOV to build a ray from.
+     std::mutex m_viewParamsMutex;
+     FfiViewParams m_viewParams[2] {};
+     bool m_viewParamsValid = false;
++
++    // Consecutive frames skipped because SteamVR had not confirmed their
++    // textures (worker thread only).
++    uint64_t m_unconfirmedSkips = 0;
++
++    std::atomic<uint32_t> m_reprojectionFlags { vr::VRCompositor_ReprojectionMotion };
+ };
+diff --git a/alvr/server_openvr/cpp/platform/linux/Renderer.cpp b/alvr/server_openvr/cpp/platform/linux/Renderer.cpp
+index 996811dd..d8d4be2b 100644
+--- a/alvr/server_openvr/cpp/platform/linux/Renderer.cpp
++++ b/alvr/server_openvr/cpp/platform/linux/Renderer.cpp
+@@ -1,9 +1,16 @@
+ #include "Renderer.hpp"
++#include "SteamVrSync.h"
+ 
++#include <cstdint>
++#include <cstring>
+ #include <optional>
++#include <set>
++#include <stdexcept>
+ #include <unistd.h>
+ #include <vulkan/vulkan_structs.hpp>
+ 
++#include "alvr_server/bindings.h"
++
+ namespace alvr::render::detail {
+ 
+ RenderPipeline::RenderPipeline(
+@@ -285,7 +292,11 @@ Output createOutputImage(
+                 continue;
+             }
+ 
++            vk::PhysicalDeviceExternalImageFormatInfo extFormatInfo {
++                .handleType = vk::ExternalMemoryHandleTypeFlagBits::eDmaBufEXT,
++            };
+             vk::PhysicalDeviceImageDrmFormatModifierInfoEXT modInfo {
++                .pNext = &extFormatInfo,
+                 .drmFormatModifier = prop.drmFormatModifier,
+                 .sharingMode = imgCI.sharingMode,
+                 .queueFamilyIndexCount = imgCI.queueFamilyIndexCount,
+@@ -307,17 +318,24 @@ Output createOutputImage(
+                 imageModifiers.push_back(prop.drmFormatModifier);
+         }
+ 
+-        extImgCI.handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eDmaBufEXT;
++        if (!imageModifiers.empty()) {
++            extImgCI.handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eDmaBufEXT;
+ 
+-        vk::ImageDrmFormatModifierListCreateInfoEXT modListCI {
+-            .pNext = &extImgCI,
+-            .drmFormatModifierCount = static_cast<u32>(imageModifiers.size()),
+-            .pDrmFormatModifiers = imageModifiers.data(),
+-        };
++            vk::ImageDrmFormatModifierListCreateInfoEXT modListCI {
++                .pNext = &extImgCI,
++                .drmFormatModifierCount = static_cast<u32>(imageModifiers.size()),
++                .pDrmFormatModifiers = imageModifiers.data(),
++            };
+ 
+-        imgCI.pNext = &modListCI;
++            imgCI.pNext = &modListCI;
+ 
+-        img.image = ctx.dev.createImage(imgCI);
++            img.image = ctx.dev.createImage(imgCI);
++        } else {
++            extImgCI.handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd;
++            imgCI.tiling = vk::ImageTiling::eOptimal;
++            imgCI.pNext = &extImgCI;
++            img.image = ctx.dev.createImage(imgCI);
++        }
+     } else if (haveDmaBuf && handleType == HandleType::DmaBuf) {
+         extImgCI.handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eDmaBufEXT;
+         imgCI.pNext = &extImgCI;
+@@ -440,60 +458,52 @@ Output createOutputImage(
+ 
+ namespace alvr::render {
+ 
++// Matches layer.comp's push constant block (std430).
++struct LayerPush {
++    int32_t dstOffset[2];
++    int32_t dstSize[2];
++    float uvRect[4];
++    int32_t opaque;
++};
++
+ Renderer::Renderer(
+     VkContext const& vkCtx, RendererCreateInfo& createInfo, std::vector<PipelineCreateInfo> pipeCIs
+ ) {
+     eyeExtent = createInfo.inputEyeExtent;
+     outExtent = createInfo.outputExtent;
+ 
+-    // The import must match how SteamVR created the image: its real format
+-    // and MUTABLE_FORMAT (passed in CreateSwapTextureSet), and no format list
+-    // since SteamVR's image has none. A list could let the driver choose a
+-    // different memory layout (e.g. compression) than the exporter did.
+-    // MUTABLE_FORMAT is what makes the UNORM view of an sRGB image legal.
+-    vk::Format inputFormat = createInfo.format;
++    // SteamVR's sRGB textures are sampled through UNORM views (see
++    // importTexture), so everything downstream is UNORM: the shaders
++    // imageStore through rgba8 and the encoder consumes raw bytes with no
++    // notion of sRGB.
+     vk::Format unormFormat = createInfo.format;
+-    if (inputFormat == vk::Format::eR8G8B8A8Srgb)
++    if (unormFormat == vk::Format::eR8G8B8A8Srgb)
+         unormFormat = vk::Format::eR8G8B8A8Unorm;
+ 
+-    if (inputFormat == vk::Format::eB8G8R8A8Srgb)
++    if (unormFormat == vk::Format::eB8G8R8A8Srgb)
+         unormFormat = vk::Format::eB8G8R8A8Unorm;
+ 
+-    // TODO: Only put the usage flags for the images that need to have them
+-    vk::ImageCreateInfo inputImgCI {
+-        .flags = vk::ImageCreateFlagBits::eMutableFormat,
++    // The working images hold both eyes side by side at the size of the
++    // first layer 0 texture set; later sets of another size (SteamVR Home's)
++    // are scaled into it by layer.comp.
++    vk::ImageCreateInfo stagingImgCI {
+         .imageType = vk::ImageType::e2D,
+-        .format = inputFormat,
+-
++        .format = unormFormat,
+         .extent = {
+-            .width = eyeExtent.width,
++            .width = eyeExtent.width * 2,
+             .height = eyeExtent.height,
+             .depth = 1,
+         },
+-
+         .mipLevels = 1,
+         .arrayLayers = 1,
+         .samples = vk::SampleCountFlagBits::e1,
+-        .usage = vk::ImageUsageFlagBits::eTransferSrc
+-            | vk::ImageUsageFlagBits::eInputAttachment | vk::ImageUsageFlagBits::eSampled,
++        .usage = vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eInputAttachment
++            | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst
++            | vk::ImageUsageFlagBits::eStorage,
+         .sharingMode = vk::SharingMode::eExclusive,
+         .initialLayout = vk::ImageLayout::eUndefined,
+     };
+ 
+-    for (int i = 0; i < ImageCount; ++i) {
+-        inputImages[i] = createImage(vkCtx, inputImgCI, createInfo.inputImgFds[i], unormFormat);
+-    }
+-
+-    // Everything downstream is UNORM regardless of the input format: the
+-    // copy moves raw bytes, the shaders imageStore through rgba8, and the
+-    // encoder consumes raw bytes with no notion of sRGB.
+-    auto stagingImgCI = inputImgCI;
+-    stagingImgCI.flags = {};
+-    stagingImgCI.format = unormFormat;
+-    stagingImgCI.extent.width = eyeExtent.width * 2;
+-    stagingImgCI.usage = inputImgCI.usage | vk::ImageUsageFlagBits::eTransferDst
+-        | vk::ImageUsageFlagBits::eStorage;
+-
+     for (auto& img : stagingImgs) {
+         img = createImage(vkCtx, stagingImgCI);
+     }
+@@ -578,34 +588,55 @@ Renderer::Renderer(
+     // renderFinishedSem = vkCtx.dev.createSemaphore(semCI);
+ 
+     fence = vkCtx.dev.createFence({});
++
++    // Copied out of the embedded bytes, which carry no 4-byte alignment.
++    std::vector<u32> layerCode((LAYER_SHADER_COMP_SPV_LEN + 3) / 4);
++    memcpy(layerCode.data(), LAYER_SHADER_COMP_SPV_PTR, LAYER_SHADER_COMP_SPV_LEN);
++    vk::ShaderModuleCreateInfo layerShaderCI {
++        .codeSize = LAYER_SHADER_COMP_SPV_LEN,
++        .pCode = layerCode.data(),
++    };
++    layerShader = vkCtx.dev.createShaderModule(layerShaderCI);
++    vk::PushConstantRange layerPushRange {
++        .stageFlags = vk::ShaderStageFlagBits::eCompute,
++        .offset = 0,
++        .size = sizeof(LayerPush),
++    };
++    vk::PipelineLayoutCreateInfo layerPipeLayoutCI {
++        .setLayoutCount = 1,
++        .pSetLayouts = &descLayout,
++        .pushConstantRangeCount = 1,
++        .pPushConstantRanges = &layerPushRange,
++    };
++    layerPipeLayout = vkCtx.dev.createPipelineLayout(layerPipeLayoutCI);
++    vk::ComputePipelineCreateInfo layerPipeCI {
++        .stage = {
++            .stage = vk::ShaderStageFlagBits::eCompute,
++            .module = layerShader,
++            .pName = "main",
++        },
++        .layout = layerPipeLayout,
++    };
++    auto [layerPipeResult, layerPipes] = vkCtx.dev.createComputePipelines({}, layerPipeCI);
++    if (layerPipeResult != vk::Result::eSuccess) {
++        throw std::runtime_error("Could not create the layer pipeline");
++    }
++    layerPipe = layerPipes[0];
+ }
+ 
+-void Renderer::render(VkContext& vkCtx, u32 leftIdx, u32 rightIdx, int const waitFds[2]) {
+-    // Import the input writers' sync files as temporary binary semaphores;
+-    // the submission below waits on them at the transfer stage, so the eye
+-    // copies start exactly when the writes complete.
+-    vk::Semaphore importedSems[2] = {};
+-    u32 importedCount = 0;
+-    if (waitFds != nullptr) {
+-        for (int e = 0; e < 2; ++e) {
+-            if (waitFds[e] < 0) {
+-                continue;
+-            }
+-            vk::Semaphore sem = vkCtx.dev.createSemaphore({});
+-            vk::ImportSemaphoreFdInfoKHR importInfo {
+-                .semaphore = sem,
+-                .flags = vk::SemaphoreImportFlagBits::eTemporary,
+-                .handleType = vk::ExternalSemaphoreHandleTypeFlagBits::eSyncFd,
+-                .fd = waitFds[e],
+-            };
+-            if (vkCtx.dev.importSemaphoreFdKHR(&importInfo, vkCtx.dispatch)
+-                == vk::Result::eSuccess) {
+-                importedSems[importedCount++] = sem;
+-            } else {
+-                vkCtx.dev.destroy(sem);
+-                close(waitFds[e]);
+-            }
+-        }
++void Renderer::render(
++    VkContext& vkCtx,
++    std::vector<Layer> const& layers,
++    std::vector<SemaphoreWait> const& semaphoreWaits
++) {
++    if (layers.empty()) {
++        return;
++    }
++    // Imports happen before recording: they create Vulkan objects.
++    std::vector<std::vector<Image*>> sources;
++    for (auto const& layer : layers) {
++        sources.push_back({ &importTexture(vkCtx, layer, layer.eyes[0]),
++                            &importTexture(vkCtx, layer, layer.eyes[1]) });
+     }
+ 
+     vk::CommandBufferBeginInfo beginInfo {};
+@@ -652,81 +683,89 @@ void Renderer::render(VkContext& vkCtx, u32 leftIdx, u32 rightIdx, int const wai
+     };
+ 
+     std::vector<vk::ImageMemoryBarrier> barriers;
+-    Image* prev = nullptr;
+ 
+-    // Copy the left and right eye images into the first working image.
+-    Image* stageOut = pipes.empty() ? &output.image : &stagingImgs[0];
+-    transitionImage(
+-        inputImages[leftIdx],
+-        vk::ImageLayout::eGeneral,
+-        vk::AccessFlagBits::eNone,
+-        vk::AccessFlagBits::eTransferRead,
+-        barriers
+-    );
+-    transitionImage(
+-        inputImages[rightIdx],
+-        vk::ImageLayout::eGeneral,
+-        vk::AccessFlagBits::eNone,
+-        vk::AccessFlagBits::eTransferRead,
+-        barriers
+-    );
++    // Draw layer 0 into the first working image, then blend each further
++    // layer over it, in submission order. layer.comp scales each eye's valid
++    // sub-rectangle to the eye; with full bounds and the same size it is a
++    // plain copy.
++    Image* stageOut = &stagingImgs[0];
++    // SteamVR's textures belong to another process. Every frame they are
++    // acquired from the external queue family and released back after the
++    // reads, so drivers that compress images (AMD's DCC, Intel's CCS) make
++    // them consistent at the handover. Their content is kept: only a
++    // texture never used before starts from an undefined layout.
++    auto externalBarrier = [&](Image& image, bool acquire) {
++        u32 const external = VK_QUEUE_FAMILY_EXTERNAL;
++        barriers.push_back(vk::ImageMemoryBarrier {
++            .srcAccessMask = acquire ? vk::AccessFlagBits::eNone : vk::AccessFlagBits::eShaderRead,
++            .dstAccessMask = acquire ? vk::AccessFlagBits::eShaderRead : vk::AccessFlagBits::eNone,
++            .oldLayout = acquire ? image.layout : vk::ImageLayout::eGeneral,
++            .newLayout = vk::ImageLayout::eGeneral,
++            .srcQueueFamilyIndex = acquire ? external : vkCtx.meta.queueFamily,
++            .dstQueueFamilyIndex = acquire ? vkCtx.meta.queueFamily : external,
++            .image = image.image,
++            .subresourceRange {
++                .aspectMask = vk::ImageAspectFlagBits::eColor,
++                .baseMipLevel = 0,
++                .levelCount = 1,
++                .baseArrayLayer = 0,
++                .layerCount = 1,
++            },
++        });
++        image.layout = vk::ImageLayout::eGeneral;
++    };
++    std::set<Image*> acquired;
++    for (auto const& eyes : sources) {
++        for (Image* source : eyes) {
++            if (acquired.insert(source).second) {
++                externalBarrier(*source, true);
++            }
++        }
++    }
+     transitionImage(
+         *stageOut,
+         vk::ImageLayout::eGeneral,
+         vk::AccessFlagBits::eNone,
+-        vk::AccessFlagBits::eTransferWrite,
++        vk::AccessFlagBits::eShaderWrite,
+         barriers
+     );
+-
+     flushBarriers(
+-        barriers, vk::PipelineStageFlagBits::eBottomOfPipe, vk::PipelineStageFlagBits::eTransfer
++        barriers, vk::PipelineStageFlagBits::eAllCommands, vk::PipelineStageFlagBits::eComputeShader
+     );
+ 
+-    vk::ImageSubresourceLayers subresLayout {
+-        .aspectMask = vk::ImageAspectFlagBits::eColor,
+-        .mipLevel = 0,
+-        .baseArrayLayer = 0,
+-        .layerCount = 1,
+-    };
+-
+-    vk::ImageCopy2KHR leftCopy {
+-        .srcSubresource = subresLayout,
+-        .srcOffset = {},
+-        .dstSubresource = subresLayout,
+-        .dstOffset = {},
+-        .extent = {
+-            .width = eyeExtent.width,
+-            .height = eyeExtent.height,
+-            .depth = 1,
+-        },
+-    };
+-    vk::CopyImageInfo2KHR leftCopyInfo {
+-        .srcImage = inputImages[leftIdx].image,
+-        .srcImageLayout = inputImages[leftIdx].layout,
+-        .dstImage = stageOut->image,
+-        .dstImageLayout = stageOut->layout,
+-        .regionCount = 1,
+-        .pRegions = &leftCopy,
+-    };
+-    cmdBuf.copyImage2KHR(leftCopyInfo, vkCtx.dispatch);
+-
+-    auto rightCopy = leftCopy;
+-    rightCopy.dstOffset = vk::Offset3D {
+-        .x = static_cast<int32_t>(eyeExtent.width),
+-        .y = 0,
+-        .z = 0,
+-    };
+-    vk::CopyImageInfo2KHR rightCopyInfo {
+-        .srcImage = inputImages[rightIdx].image,
+-        .srcImageLayout = inputImages[rightIdx].layout,
+-        .dstImage = stageOut->image,
+-        .dstImageLayout = stageOut->layout,
+-        .regionCount = 1,
+-        .pRegions = &rightCopy,
+-    };
+-    cmdBuf.copyImage2KHR(rightCopyInfo, vkCtx.dispatch);
++    cmdBuf.bindPipeline(vk::PipelineBindPoint::eCompute, layerPipe);
++    for (usize layerIdx = 0; layerIdx < layers.size(); ++layerIdx) {
++        if (layerIdx > 0) {
++            // A blend reads what the previous layer wrote.
++            vk::MemoryBarrier memBarrier {
++                .srcAccessMask = vk::AccessFlagBits::eShaderWrite,
++                .dstAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite,
++            };
++            cmdBuf.pipelineBarrier(
++                vk::PipelineStageFlagBits::eComputeShader,
++                vk::PipelineStageFlagBits::eComputeShader,
++                {},
++                memBarrier,
++                {},
++                {}
++            );
++        }
++        for (int eye = 0; eye < 2; ++eye) {
++            drawLayerEye(
++                vkCtx, *sources[layerIdx][eye], eye, layers[layerIdx].eyes[eye], layerIdx == 0
++            );
++        }
++    }
++    for (Image* source : acquired) {
++        externalBarrier(*source, false);
++    }
++    flushBarriers(
++        barriers,
++        vk::PipelineStageFlagBits::eComputeShader,
++        vk::PipelineStageFlagBits::eBottomOfPipe
++    );
+ 
+-    prev = stageOut;
++    Image* prev = stageOut;
+ 
+     PushConstants const pushConstants {
+         .warp = warpParams,
+@@ -746,7 +785,7 @@ void Renderer::render(VkContext& vkCtx, u32 leftIdx, u32 rightIdx, int const wai
+         transitionImage(
+             *prev,
+             vk::ImageLayout::eShaderReadOnlyOptimal,
+-            vk::AccessFlagBits::eTransferWrite | vk::AccessFlagBits::eShaderWrite,
++            vk::AccessFlagBits::eShaderWrite,
+             vk::AccessFlagBits::eShaderRead,
+             barriers
+         );
+@@ -760,7 +799,7 @@ void Renderer::render(VkContext& vkCtx, u32 leftIdx, u32 rightIdx, int const wai
+ 
+         flushBarriers(
+             barriers,
+-            vk::PipelineStageFlagBits::eTransfer | vk::PipelineStageFlagBits::eComputeShader,
++            vk::PipelineStageFlagBits::eComputeShader,
+             vk::PipelineStageFlagBits::eComputeShader
+         );
+ 
+@@ -774,34 +813,183 @@ void Renderer::render(VkContext& vkCtx, u32 leftIdx, u32 rightIdx, int const wai
+ 
+     cmdBuf.end();
+ 
+-    // vk::TimelineSemaphoreSubmitInfo timelineInfo {
+-    //     .waitSemaphoreValueCount = 1,
+-    //     .pWaitSemaphoreValues = &waitValue,
+-    // };
+-    vk::PipelineStageFlags waitStages[2] = {
+-        vk::PipelineStageFlagBits::eTransfer,
+-        vk::PipelineStageFlagBits::eTransfer,
++    std::vector<vk::Semaphore> waitSemaphores;
++    std::vector<uint64_t> waitValues;
++    std::vector<vk::PipelineStageFlags> waitStages;
++
++    // Deduplicate semaphores by handle, picking the highest target value
++    std::unordered_map<u64, u64> uniqueWaits;
++    for (auto const& w : semaphoreWaits) {
++        if (w.semaphore != 0) {
++            uniqueWaits[w.semaphore] = std::max(uniqueWaits[w.semaphore], w.value);
++        }
++    }
++
++    for (auto const& [semHandle, targetVal] : uniqueWaits) {
++        auto it = timelines.find(semHandle);
++        if (it == timelines.end()) {
++            int fd = steamvrsync::Sync::Get().DupFd(semHandle);
++            if (fd >= 0) {
++                vk::SemaphoreTypeCreateInfo typeInfo {
++                    .semaphoreType = vk::SemaphoreType::eTimeline,
++                    .initialValue = 0,
++                };
++                vk::SemaphoreCreateInfo semInfo {
++                    .pNext = &typeInfo,
++                };
++                try {
++                    vk::Semaphore sem = vkCtx.dev.createSemaphore(semInfo);
++                    vk::ImportSemaphoreFdInfoKHR importInfo {
++                        .semaphore = sem,
++                        .handleType = vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueFd,
++                        .fd = fd,
++                    };
++                    if (vkCtx.dev.importSemaphoreFdKHR(&importInfo, vkCtx.dispatch)
++                        == vk::Result::eSuccess) {
++                        it = timelines.emplace(semHandle, sem).first;
++                    } else {
++                        close(fd);
++                        vkCtx.dev.destroy(sem);
++                    }
++                } catch (...) {
++                    close(fd);
++                }
++            }
++        }
++        if (it != timelines.end()) {
++            waitSemaphores.push_back(it->second);
++            waitValues.push_back(targetVal);
++            waitStages.push_back(vk::PipelineStageFlagBits::eAllCommands);
++        }
++    }
++
++    vk::TimelineSemaphoreSubmitInfo timelineSubmitInfo {
++        .waitSemaphoreValueCount = static_cast<uint32_t>(waitValues.size()),
++        .pWaitSemaphoreValues = waitValues.data(),
+     };
++
+     vk::SubmitInfo submitInfo {
+-        // .pNext = &timelineInfo,
+-        .waitSemaphoreCount = importedCount, .pWaitSemaphores = importedSems,
+-        .pWaitDstStageMask = waitStages,     .commandBufferCount = 1,
++        .pNext = waitValues.empty() ? nullptr : &timelineSubmitInfo,
++        .waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size()),
++        .pWaitSemaphores = waitSemaphores.empty() ? nullptr : waitSemaphores.data(),
++        .pWaitDstStageMask = waitStages.empty() ? nullptr : waitStages.data(),
++        .commandBufferCount = 1,
+         .pCommandBuffers = &cmdBuf,
+     };
+ 
+     vkCtx.useQueue([&](auto& queue) { queue.submit(submitInfo, fence); });
+-    // The fence wait below also orders the destruction of the temporary
+-    // imported semaphores: the queue waits on them until the submission
+-    // finishes, so destroying them earlier would be a use after free.
+-    assert(vkCtx.dev.waitForFences(fence, true, UINT64_MAX) == vk::Result::eSuccess);
++    if (vkCtx.dev.waitForFences(fence, true, UINT64_MAX) != vk::Result::eSuccess) {
++        throw std::runtime_error("Renderer::render: waitForFences failed");
++    }
+     vkCtx.dev.resetFences(fence);
++}
++
++// Imports one of SteamVR's textures the first time its handle is seen, the
++// way the textures were always imported here: OPAQUE_FD memory, SteamVR's
++// real format with MUTABLE_FORMAT and no format list (as the driver created
++// it in CreateSwapTextureSet, so the memory layout matches the exporter's),
++// and a UNORM view of an sRGB format. No new requirement on any vendor.
++Image& Renderer::importTexture(VkContext& vkCtx, Layer const& layer, LayerEye const& eye) {
++    auto it = textures.find(eye.handle);
++    if (it != textures.end()) {
++        return it->second;
++    }
++    int fd = dup(eye.fd);
++    if (fd < 0) {
++        throw std::runtime_error("Could not duplicate a SteamVR texture fd");
++    }
++    vk::Format unormFormat = layer.format;
++    if (unormFormat == vk::Format::eR8G8B8A8Srgb)
++        unormFormat = vk::Format::eR8G8B8A8Unorm;
++    if (unormFormat == vk::Format::eB8G8R8A8Srgb)
++        unormFormat = vk::Format::eB8G8R8A8Unorm;
++    vk::ImageCreateInfo textureCI {
++        .flags = vk::ImageCreateFlagBits::eMutableFormat,
++        .imageType = vk::ImageType::e2D,
++        .format = layer.format,
++        .extent = { .width = layer.extent.width, .height = layer.extent.height, .depth = 1 },
++        .mipLevels = 1,
++        .arrayLayers = 1,
++        .samples = vk::SampleCountFlagBits::e1,
++        .usage = vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eInputAttachment
++            | vk::ImageUsageFlagBits::eSampled,
++        .sharingMode = vk::SharingMode::eExclusive,
++        .initialLayout = vk::ImageLayout::eUndefined,
++    };
++    try {
++        return textures.emplace(eye.handle, createImage(vkCtx, textureCI, fd, unormFormat))
++            .first->second;
++    } catch (...) {
++        close(fd);
++        throw;
++    }
++}
+ 
+-    for (u32 i = 0; i < importedCount; ++i) {
+-        vkCtx.dev.destroy(importedSems[i]);
++void Renderer::drawLayerEye(
++    VkContext& vkCtx, Image& source, int eye, LayerEye const& rect, bool opaque
++) {
++    vk::DescriptorImageInfo sourceInfo {
++        .imageView = source.view,
++        .imageLayout = vk::ImageLayout::eGeneral,
++    };
++    vk::DescriptorImageInfo targetInfo {
++        .imageView = stagingImgs[0].view,
++        .imageLayout = vk::ImageLayout::eGeneral,
++    };
++    vk::WriteDescriptorSet writes[2];
++    writes[0] = {
++        .dstBinding = 0,
++        .descriptorCount = 1,
++        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
++        .pImageInfo = &sourceInfo,
++    };
++    writes[1] = {
++        .dstBinding = 1,
++        .descriptorCount = 1,
++        .descriptorType = vk::DescriptorType::eStorageImage,
++        .pImageInfo = &targetInfo,
++    };
++    cmdBuf.pushDescriptorSetKHR(
++        vk::PipelineBindPoint::eCompute, layerPipeLayout, 0, writes, vkCtx.dispatch
++    );
++    LayerPush push {
++        .dstOffset = { int32_t(eye * eyeExtent.width), 0 },
++        .dstSize = { int32_t(eyeExtent.width), int32_t(eyeExtent.height) },
++        .uvRect = { rect.uMin, rect.vMin, rect.uMax, rect.vMax },
++        .opaque = opaque ? 1 : 0,
++    };
++    cmdBuf.pushConstants(
++        layerPipeLayout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(push), &push
++    );
++    cmdBuf.dispatch((eyeExtent.width + 7) / 8, (eyeExtent.height + 7) / 8, 1);
++}
++
++void Renderer::releaseTextures(VkContext const& vkCtx, std::vector<u64> const& handles) {
++    for (u64 handle : handles) {
++        auto it = textures.find(handle);
++        if (it != textures.end()) {
++            it->second.destroy(vkCtx);
++            textures.erase(it);
++        }
++    }
++}
++
++void Renderer::releaseSemaphores(VkContext const& vkCtx, std::vector<u64> const& handles) {
++    for (u64 handle : handles) {
++        auto it = timelines.find(handle);
++        if (it != timelines.end()) {
++            vkCtx.dev.destroy(it->second);
++            timelines.erase(it);
++        }
+     }
+ }
+ 
+ void Renderer::destroy(VkContext const& ctx) {
++    for (auto& [handle, sem] : timelines) {
++        ctx.dev.destroy(sem);
++    }
++    timelines.clear();
++
+     // ctx.dev.destroy(renderFinishedSem);
+ 
+     for (auto& pipe : pipes) {
+@@ -821,9 +1009,13 @@ void Renderer::destroy(VkContext const& ctx) {
+         img.destroy(ctx);
+     }
+ 
+-    for (auto& img : inputImages) {
++    for (auto& [handle, img] : textures) {
+         img.destroy(ctx);
+     }
++    textures.clear();
++    ctx.dev.destroy(layerPipe);
++    ctx.dev.destroy(layerPipeLayout);
++    ctx.dev.destroy(layerShader);
+ }
+ 
+ }
+diff --git a/alvr/server_openvr/cpp/platform/linux/Renderer.hpp b/alvr/server_openvr/cpp/platform/linux/Renderer.hpp
+index 2b45e757..0fc13df8 100644
+--- a/alvr/server_openvr/cpp/platform/linux/Renderer.hpp
++++ b/alvr/server_openvr/cpp/platform/linux/Renderer.hpp
+@@ -2,6 +2,8 @@
+ 
+ #define VULKAN_HPP_NO_CONSTRUCTORS
+ #include <cstddef>
++#include <map>
++#include <vector>
+ #include <vulkan/vulkan.h>
+ #include <vulkan/vulkan.hpp>
+ #include <vulkan/vulkan_core.h>
+@@ -16,7 +18,6 @@
+ 
+ namespace alvr::render {
+ 
+-constexpr u32 ImageCount = 6;
+ constexpr usize StagingImgCount = 2;
+ 
+ enum class HandleType {
+@@ -64,7 +65,32 @@ struct RendererCreateInfo {
+     vk::Format format;
+     vk::Extent2D inputEyeExtent;
+     vk::Extent2D outputExtent;
+-    std::array<int, ImageCount> inputImgFds;
++};
++
++// One eye of a submitted layer: SteamVR's texture by its shared handle, the
++// fd it was received with (owned by the driver, dup'd for the import), and
++// the valid sub-rectangle SteamVR submitted (normalized; reversed endpoints
++// flip the image).
++struct LayerEye {
++    u64 handle = 0;
++    int fd = -1;
++    float uMin = 0.f;
++    float vMin = 0.f;
++    float uMax = 1.f;
++    float vMax = 1.f;
++};
++
++// A submitted layer. Layer 0 is the scene; later layers (SteamVR's dashboard,
++// other overlays) are blended over it in order.
++struct Layer {
++    vk::Format format = vk::Format::eUndefined;
++    vk::Extent2D extent {};
++    LayerEye eyes[2];
++};
++
++struct SemaphoreWait {
++    uint64_t semaphore = 0;
++    uint64_t value = 0;
+ };
+ 
+ // Push-constant payload for the rotational reprojection fold in the sampling
+@@ -131,7 +157,6 @@ class Renderer {
+     vk::Extent2D eyeExtent;
+     vk::Extent2D outExtent;
+ 
+-    Image inputImages[ImageCount];
+     Image stagingImgs[StagingImgCount];
+     Output output;
+ 
+@@ -144,6 +169,18 @@ class Renderer {
+ 
+     std::vector<detail::RenderPipeline> pipes;
+ 
++    // SteamVR's textures, imported on first use by handle and kept until
++    // SteamVR destroys them (releaseTextures) or the renderer goes.
++    std::map<u64, Image> textures;
++    std::unordered_map<u64, vk::Semaphore> timelines;
++    // layer.comp: draws one eye of a layer into the working image.
++    vk::ShaderModule layerShader;
++    vk::PipelineLayout layerPipeLayout;
++    vk::Pipeline layerPipe;
++
++    Image& importTexture(VkContext& vkCtx, Layer const& layer, LayerEye const& eye);
++    void drawLayerEye(VkContext& vkCtx, Image& source, int eye, LayerEye const& rect, bool opaque);
++
+     // vk::Semaphore renderFinishedSem;
+ 
+ public:
+@@ -157,11 +194,19 @@ public:
+ 
+     // NOTE: Use the output immediately afterwards, as this synchronizes to the end of gpu
+     // operations
+-    // waitFds, when given, are sync_file fds imported as temporary semaphores
+-    // the submission waits on before the eye copies. Ownership transfers to
+-    // this call: a successful import hands the fd to Vulkan, a failed one is
+-    // closed here.
+-    void render(VkContext& vkCtx, u32 leftIdx, u32 rightIdx, int const waitFds[2] = nullptr);
++    // Draws layers[0] into the working image, blends the other layers over
++    // it, then runs the pass chain. The caller has already waited for the
++    // writers of every texture.
++    void render(
++        VkContext& vkCtx,
++        std::vector<Layer> const& layers,
++        std::vector<SemaphoreWait> const& semaphoreWaits = {}
++    );
++
++    // Frees the imports of textures SteamVR destroyed. The GPU is idle
++    // between frames (render waits for its submission).
++    void releaseTextures(VkContext const& vkCtx, std::vector<u64> const& handles);
++    void releaseSemaphores(VkContext const& vkCtx, std::vector<u64> const& handles);
+ 
+     WarpParams warpParams {};
+ 
+diff --git a/alvr/server_openvr/cpp/platform/linux/SteamVrSync.h b/alvr/server_openvr/cpp/platform/linux/SteamVrSync.h
+new file mode 100644
+index 00000000..131963d4
+--- /dev/null
++++ b/alvr/server_openvr/cpp/platform/linux/SteamVrSync.h
+@@ -0,0 +1,248 @@
++#pragma once
++// Finds the GPU signal that marks the end of SteamVR's write into a shared
++// texture, so the encoder reads each texture exactly when it is finished
++// instead of after a guessed delay. Linux only.
++//
++// WHY
++// On NVIDIA's Linux driver the dma-buf of a SteamVR texture carries no
++// implicit fence, so ALVR could not see when the compositor (or the
++// application) finished drawing and slept a fixed time. No fixed time fits
++// every load: too short reads the previous frame, too long costs frame rate,
++// and with SteamVR's next write overlapping the read one eye shows the next
++// frame (seen as the right eye shaking; the compositor draws it last).
++// Steam Link's own driver (driver_vrlink.so) waits on a per-texture timeline
++// semaphore instead; this file reaches the same semaphore.
++//
++// UNDOCUMENTED STEAMVR INTERFACES USED HERE
++// None of the following is in openvr_driver.h. It was read from Steam Link's
++// driver_vrlink.so (SteamVR 2.17.x, October 2026) and checked against the
++// live shared memory; the analysis, with addresses, is in the MetaHorizonLinux
++// repository, analysis/steamlink-vrlink-driver.md, "Per-texture semaphores".
++// A SteamVR update may change any of it; every failure below degrades to
++// "no semaphore", and the caller then falls back to the old guard.
++//  1. Every shared resource (image or semaphore) has a 0x48-byte "resource
++//     state" in POSIX shared memory. Its name is the CRC-32 (zlib, IEEE) of
++//     "VR_CompositorResourceState_<handle hex>_0_<namespace>", opened as
++//     "/u<uid>-Shm_<crc hex>". In SteamVR's code: CSharedResourceBaseLinux::
++//     Import builds "_%lx_%d" and the shared object manager hashes the name.
++//  2. <namespace> is vrserver's PID. Steam Link asks vrserver for it over the
++//     "SteamVR_Namespace" IPC channel; a driver runs inside vrserver, so
++//     getpid() gives the same number. Would break if drivers ever ran in
++//     their own process.
++//  3. Image state +0x40: the handle of the image's associated timeline
++//     semaphore, in the same handle space as vr::SharedTextureHandle_t
++//     ((index << 32) | compositor PID; the semaphore's index is the image's
++//     + 1). Zero until SteamVR has associated one.
++//  4. Semaphore state +0x00: the timeline value of the last write submitted
++//     on its image. Read at Present it is the value that write will signal.
++//     Steam Link reads it at Present and waits for it on the GPU.
++//     Observed limit: for vrcompositor's own textures the right eye's value
++//     is often already reached at Present while its write is still to come,
++//     so for frames that read them the driver also holds PostPresent until
++//     the read (see OvrDirectModeComponent::PostPresent).
++// The semaphore fd itself comes through the PUBLIC IVRIPCResourceManagerClient
++// (RefResource + ReceiveSharedFd), as an OPAQUE_FD timeline semaphore.
++//
++// OTHER DEVICES
++// Windows: not built there (D3D textures and keyed mutexes instead).
++// NVIDIA: tested; the semaphore was present for every texture.
++// AMD / Intel (Mesa): not tested. The state comes from SteamVR's
++// vendor-neutral code, so it is likely present; if it is not, the caller
++// falls back to upstream's guard (implicit fences, which do work on Mesa,
++// plus a fixed sleep).
++#include "openvr_driver.h"
++
++#include <cstdint>
++#include <cstdio>
++#include <cstring>
++#include <fcntl.h>
++#include <map>
++#include <mutex>
++#include <string>
++#include <sys/mman.h>
++#include <unistd.h>
++#include <vector>
++
++namespace steamvrsync {
++
++// UNDOCUMENTED (item 1 and 3 above): size of a resource state and where an
++// image's state keeps its semaphore handle.
++constexpr size_t StateSize = 0x48;
++constexpr size_t ImageSemaphoreOffset = 0x40;
++
++// The CRC-32 SteamVR's shared object manager names its memory with (item 1).
++inline uint32_t Crc32(const char* data, size_t length) {
++    uint32_t crc = 0xffffffffu;
++    for (size_t i = 0; i < length; ++i) {
++        crc ^= (uint8_t)data[i];
++        for (int bit = 0; bit < 8; ++bit) {
++            crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
++        }
++    }
++    return ~crc;
++}
++
++class Sync {
++public:
++    static Sync& Get() {
++        static Sync sync;
++        return sync;
++    }
++
++    // Handle of the semaphore SteamVR associated with this texture, 0 when
++    // there is none (yet). Cached once found. Compositor thread.
++    uint64_t SemaphoreOf(uint64_t textureHandle) {
++        std::lock_guard<std::mutex> lock(m_mutex);
++        auto it = m_semaphoreOf.find(textureHandle);
++        if (it != m_semaphoreOf.end()) {
++            return it->second;
++        }
++        const volatile uint8_t* state = State(textureHandle);
++        if (!state) {
++            return 0;
++        }
++        uint64_t semaphore
++            = __atomic_load_n((const uint64_t*)(state + ImageSemaphoreOffset), __ATOMIC_ACQUIRE);
++        if (semaphore != 0) {
++            m_semaphoreOf[textureHandle] = semaphore;
++        }
++        return semaphore;
++    }
++
++    // Timeline value of the last write submitted on the semaphore's image;
++    // false when its state cannot be mapped. Read at Present.
++    bool Value(uint64_t semaphoreHandle, uint64_t* value) {
++        std::lock_guard<std::mutex> lock(m_mutex);
++        const volatile uint8_t* state = State(semaphoreHandle);
++        if (!state) {
++            return false;
++        }
++        // UNDOCUMENTED (item 4): the value sits at the start of the state.
++        *value = __atomic_load_n((const uint64_t*)state, __ATOMIC_ACQUIRE);
++        return true;
++    }
++
++    // A new fd for the semaphore (caller owns it), -1 on failure. The first
++    // call takes a reference and receives the fd through SteamVR's IPC
++    // resource manager; later calls dup the kept one.
++    int DupFd(uint64_t semaphoreHandle) {
++        std::lock_guard<std::mutex> lock(m_mutex);
++        auto it = m_fds.find(semaphoreHandle);
++        if (it == m_fds.end()) {
++            auto* mgr = vr::VRIPCResourceManager();
++            if (!mgr) {
++                return -1;
++            }
++            int fd = -1;
++            uint64_t ipcHandle = 0;
++            if (mgr->RefResource(semaphoreHandle, &ipcHandle)) {
++                if (mgr->ReceiveSharedFd(ipcHandle, &fd) && fd >= 0) {
++                    it = m_fds.emplace(semaphoreHandle, fd).first;
++                } else {
++                    if (fd >= 0) {
++                        close(fd);
++                    }
++                    mgr->UnrefResource(semaphoreHandle);
++                    return -1;
++                }
++            } else {
++                return -1;
++            }
++        }
++        return it->second >= 0 ? dup(it->second) : -1;
++    }
++
++    // Drops everything kept for these textures once SteamVR destroyed them:
++    // the mapped states, the semaphore's fd and its reference. Returns the
++    // semaphores that were associated, so the caller can free its imports.
++    std::vector<uint64_t> Forget(std::vector<uint64_t> const& textureHandles) {
++        std::lock_guard<std::mutex> lock(m_mutex);
++        std::vector<uint64_t> semaphores;
++        for (uint64_t texture : textureHandles) {
++            auto sem = m_semaphoreOf.find(texture);
++            if (sem != m_semaphoreOf.end()) {
++                semaphores.push_back(sem->second);
++                Unmap(sem->second);
++                auto fd = m_fds.find(sem->second);
++                if (fd != m_fds.end()) {
++                    if (fd->second >= 0) {
++                        close(fd->second);
++                        auto* mgr = vr::VRIPCResourceManager();
++                        if (mgr) {
++                            mgr->UnrefResource(sem->second);
++                        }
++                    }
++                    m_fds.erase(fd);
++                }
++                m_semaphoreOf.erase(sem);
++            }
++            Unmap(texture);
++        }
++        return semaphores;
++    }
++
++    void ForgetAll() {
++        std::lock_guard<std::mutex> lock(m_mutex);
++        auto* mgr = vr::VRIPCResourceManager();
++        for (auto& pair : m_fds) {
++            if (pair.second >= 0) {
++                close(pair.second);
++                if (mgr) {
++                    mgr->UnrefResource(pair.first);
++                }
++            }
++        }
++        m_fds.clear();
++        for (auto& pair : m_states) {
++            munmap((void*)pair.second, StateSize);
++        }
++        m_states.clear();
++        m_semaphoreOf.clear();
++    }
++
++private:
++    std::mutex m_mutex;
++    std::map<uint64_t, const volatile uint8_t*> m_states;
++    std::map<uint64_t, uint64_t> m_semaphoreOf;
++    std::map<uint64_t, int> m_fds;
++
++    void Unmap(uint64_t handle) {
++        auto it = m_states.find(handle);
++        if (it != m_states.end()) {
++            munmap((void*)it->second, StateSize);
++            m_states.erase(it);
++        }
++    }
++
++    const volatile uint8_t* State(uint64_t handle) {
++        auto it = m_states.find(handle);
++        if (it != m_states.end()) {
++            return it->second;
++        }
++        // UNDOCUMENTED (items 1 and 2): the state's name and file. Read only;
++        // ALVR never writes SteamVR's state.
++        char name[96];
++        snprintf(
++            name,
++            sizeof(name),
++            "VR_CompositorResourceState_%llx_0_%u",
++            (unsigned long long)handle,
++            (unsigned)getpid()
++        );
++        char path[64];
++        snprintf(path, sizeof(path), "/u%u-Shm_%x", (unsigned)getuid(), Crc32(name, strlen(name)));
++        int fd = shm_open(path, O_RDONLY, 0);
++        if (fd < 0) {
++            return nullptr; // not created yet; retried on the next call
++        }
++        void* map = mmap(nullptr, StateSize, PROT_READ, MAP_SHARED, fd, 0);
++        close(fd);
++        if (map == MAP_FAILED) {
++            return nullptr;
++        }
++        m_states[handle] = (const volatile uint8_t*)map;
++        return (const volatile uint8_t*)map;
++    }
++};
++
++} // namespace steamvrsync
+diff --git a/alvr/server_openvr/cpp/platform/linux/TextureTimelineWait.h b/alvr/server_openvr/cpp/platform/linux/TextureTimelineWait.h
+new file mode 100644
+index 00000000..33ada621
+--- /dev/null
++++ b/alvr/server_openvr/cpp/platform/linux/TextureTimelineWait.h
+@@ -0,0 +1,38 @@
++#pragma once
++
++#include <chrono>
++#include <cstdint>
++
++namespace alvr {
++
++// The callback imports/waits for one advertised timeline. The first failed
++// confirmation rejects the whole job. Never multiply the wait budget by the
++// number of textures, and still accept an already-ready value at the deadline.
++// Missing handles belong to the separate implicit-fence path.
++// A clock callable makes deadline/exhaustion behavior testable without sleeps.
++template <typename Waits, typename Wait, typename Now>
++bool waitForTextureTimelines(
++    Waits const& waits, std::chrono::nanoseconds budget, Wait&& wait, Now&& now
++) {
++    auto const deadline = now() + budget;
++    for (auto const& texture : waits) {
++        if (texture.semaphore == 0) {
++            continue;
++        }
++        auto const remaining
++            = std::chrono::duration_cast<std::chrono::nanoseconds>(deadline - now()).count();
++        if (!wait(texture, remaining > 0 ? static_cast<uint64_t>(remaining) : 0)) {
++            return false;
++        }
++    }
++    return true;
++}
++
++template <typename Waits, typename Wait>
++bool waitForTextureTimelines(Waits const& waits, std::chrono::nanoseconds budget, Wait&& wait) {
++    return waitForTextureTimelines(waits, budget, wait, [] {
++        return std::chrono::steady_clock::now();
++    });
++}
++
++} // namespace alvr
+diff --git a/alvr/server_openvr/cpp/platform/linux/shader/layer.comp b/alvr/server_openvr/cpp/platform/linux/shader/layer.comp
+new file mode 100644
+index 00000000..4651f411
+--- /dev/null
++++ b/alvr/server_openvr/cpp/platform/linux/shader/layer.comp
+@@ -0,0 +1,40 @@
++#version 450
++
++// Draws one eye of a submitted layer into the working image (both eyes side
++// by side). The layer's valid sub-rectangle (uvRect) is stretched over the
++// whole eye. Layer 0 is copied (opaque); later layers, such as SteamVR's
++// dashboard, are blended over what is already there. SteamVR submits them
++// with premultiplied alpha, so the colour is added as is.
++//
++// Values stay sRGB-encoded end to end: SteamVR's sRGB textures are sampled
++// through UNORM views, as the copy this replaces moved raw bytes, so colours
++// are unchanged; the blend is done on encoded values (fine for the menu, not
++// exact). With matching sizes and full bounds each pixel samples its own
++// texel centre, so layer 0 comes out identical to a copy.
++
++layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
++layout (binding = 0) uniform sampler2D layerEye;
++layout (binding = 1, rgba8) uniform image2D target;
++
++layout (push_constant) uniform Params {
++    ivec2 dstOffset; // the eye's origin in the working image
++    ivec2 dstSize;   // the eye's size in the working image
++    vec4 uvRect;     // uMin, vMin, uMax, vMax
++    int opaque;      // 1: layer 0, copy; 0: blend over
++} p;
++
++void main() {
++    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
++    if (pos.x >= p.dstSize.x || pos.y >= p.dstSize.y) {
++        return;
++    }
++    vec2 t = (vec2(pos) + 0.5) / vec2(p.dstSize);
++    vec4 src = texture(layerEye, mix(p.uvRect.xy, p.uvRect.zw, t));
++    ivec2 dst = pos + p.dstOffset;
++    if (p.opaque != 0) {
++        imageStore(target, dst, vec4(src.rgb, 1.0));
++        return;
++    }
++    vec4 base = imageLoad(target, dst);
++    imageStore(target, dst, vec4(base.rgb * (1.0 - src.a) + src.rgb, 1.0));
++}
+diff --git a/alvr/server_openvr/src/graphics.rs b/alvr/server_openvr/src/graphics.rs
+index 1e27d97a..4f7e1a10 100644
+--- a/alvr/server_openvr/src/graphics.rs
++++ b/alvr/server_openvr/src/graphics.rs
+@@ -12,6 +12,7 @@ static COLOR_SHADER_COMP_SPV: &[u8] = include_bytes!("../cpp/platform/linux/shad
+ static FFR_SHADER_COMP_SPV: &[u8] = include_bytes!("../cpp/platform/linux/shader/ffr.comp.spv");
+ static RGBTOYUV420_SHADER_COMP_SPV: &[u8] =
+     include_bytes!("../cpp/platform/linux/shader/rgbtoyuv420.comp.spv");
++static LAYER_SHADER_COMP_SPV: &[u8] = include_bytes!("../cpp/platform/linux/shader/layer.comp.spv");
+ 
+ pub fn initialize_shaders() {
+     unsafe {
+@@ -35,5 +36,7 @@ pub fn initialize_shaders() {
+         crate::FFR_SHADER_COMP_SPV_LEN = FFR_SHADER_COMP_SPV.len() as _;
+         crate::RGBTOYUV420_SHADER_COMP_SPV_PTR = RGBTOYUV420_SHADER_COMP_SPV.as_ptr();
+         crate::RGBTOYUV420_SHADER_COMP_SPV_LEN = RGBTOYUV420_SHADER_COMP_SPV.len() as _;
++        crate::LAYER_SHADER_COMP_SPV_PTR = LAYER_SHADER_COMP_SPV.as_ptr();
++        crate::LAYER_SHADER_COMP_SPV_LEN = LAYER_SHADER_COMP_SPV.len() as _;
+     }
+ }
+diff --git a/alvr/server_openvr/src/lib.rs b/alvr/server_openvr/src/lib.rs
+index 9eaddf63..7c8fe133 100644
+--- a/alvr/server_openvr/src/lib.rs
++++ b/alvr/server_openvr/src/lib.rs
+@@ -2,7 +2,6 @@ mod foveated_encoding;
+ mod graphics;
+ mod props;
+ mod tracking;
+-mod vsync;
+ 
+ #[allow(
+     non_camel_case_types,
+@@ -147,10 +146,6 @@ fn make_settings(negotiated: Option<&ServerNegotiatedStreamingConfig>) -> Settin
+             (0, 0, false, 0.0, false)
+         };
+ 
+-    // The vsync grid runs at the rate the driver is told about, set here so the announcer never
+-    // has to read a setting back across the boundary.
+-    vsync::set_refresh_rate(refresh_rate as f32);
+-
+     Settings {
+         m_refreshRate: refresh_rate,
+         m_renderWidth: render_width,
+@@ -747,6 +742,13 @@ pub unsafe extern "C" fn HmdDriverFactory(
+     interface_name: *const c_char,
+     return_code: *mut i32,
+ ) -> *mut c_void {
++    #[cfg(target_os = "linux")]
++    unsafe {
++        // SteamVR's linux compositor enables app throttling only when
++        // STEAMVR_MOTION_SMOOTHING=1 is set in the environment.
++        std::env::set_var("STEAMVR_MOTION_SMOOTHING", "1");
++    }
++
+     let Ok(driver_dir) = alvr_server_io::get_driver_dir_from_registered() else {
+         return ptr::null_mut();
+     };
+@@ -823,6 +825,11 @@ extern "C" fn set_openvr_props(instance_ptr: *mut c_void, device_id: u64) {
+ pub extern "C" fn initialize_runtime() {
+     static ONCE: Once = Once::new();
+     ONCE.call_once(|| {
++        #[cfg(target_os = "linux")]
++        unsafe {
++            std::env::set_var("STEAMVR_MOTION_SMOOTHING", "1");
++        }
++
+         let Some(init_data) = FACTORY_INIT_DATA.lock().take() else {
+             return;
+         };
+diff --git a/alvr/server_openvr/src/vsync.rs b/alvr/server_openvr/src/vsync.rs
+deleted file mode 100644
+index 4fd4612a..00000000
+--- a/alvr/server_openvr/src/vsync.rs
++++ /dev/null
+@@ -1,177 +0,0 @@
+-//! The vsync grid the compositor is paced against.
+-//!
+-//! A free-running grid of ticks at the refresh interval, declared to SteamVR a fixed lead ahead of
+-//! each tick, with Present held until the tick after the one just declared. The grid does not
+-//! follow the frames: a frame that overran costs one frame rather than moving the schedule the
+-//! compositor hands the application.
+-//!
+-//! It lives here rather than in the driver because three separate places in the driver read or
+-//! write it, and a second copy of the rules on another platform would drift from this one.
+-
+-use alvr_common::{error, parking_lot::Mutex};
+-use std::{
+-    sync::atomic::{AtomicBool, AtomicU64, Ordering},
+-    thread::{self, JoinHandle},
+-    time::{Duration, Instant},
+-};
+-
+-/// How far ahead of a tick the vsync is declared. A fixed time rather than a fraction of the
+-/// frame: declaring no headroom advertises none, and heavy applications fall to half the refresh
+-/// rate, while a lead inside the running start band Valve documents for direct mode drivers holds
+-/// at any refresh rate.
+-const RUNNING_START: Duration = Duration::from_micros(2000);
+-
+-/// The refresh interval, in nanoseconds, kept where the announcer can read it without crossing
+-/// back into the driver on every tick. Written wherever the driver's settings are built, so it
+-/// tracks a refresh rate change the same way reading the setting each tick did.
+-static FRAME_INTERVAL_NS: AtomicU64 = AtomicU64::new(0);
+-
+-static ANNOUNCER_EXIT: AtomicBool = AtomicBool::new(false);
+-static ANNOUNCER: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
+-static GRID: Mutex<Grid> = Mutex::new(Grid::EMPTY);
+-
+-struct Grid {
+-    /// The next tick. None until the first one is placed, which is one interval after the grid
+-    /// starts running.
+-    next_vsync: Option<Instant>,
+-    /// The tick most recently declared. Present is paced from this rather than from the next tick,
+-    /// so shedding a tick does not lengthen the hold.
+-    last_tick: Option<Instant>,
+-    /// Ticks the grid passed without declaring, because the announcer did not run in time.
+-    skipped_vsyncs: u64,
+-}
+-
+-impl Grid {
+-    const EMPTY: Self = Self {
+-        next_vsync: None,
+-        last_tick: None,
+-        skipped_vsyncs: 0,
+-    };
+-}
+-
+-fn frame_interval() -> Duration {
+-    Duration::from_nanos(FRAME_INTERVAL_NS.load(Ordering::Relaxed))
+-}
+-
+-/// Called wherever the driver's settings are built, so the grid runs at the rate the driver was
+-/// told about.
+-pub fn set_refresh_rate(refresh_rate: f32) {
+-    if refresh_rate <= 0. {
+-        return;
+-    }
+-
+-    FRAME_INTERVAL_NS.store((1e9 / refresh_rate as f64) as u64, Ordering::Relaxed);
+-}
+-
+-fn announcer_loop() {
+-    {
+-        let mut grid = GRID.lock();
+-        *grid = Grid::EMPTY;
+-        grid.next_vsync = Some(Instant::now() + frame_interval());
+-    }
+-
+-    while !ANNOUNCER_EXIT.load(Ordering::Relaxed) {
+-        let interval = frame_interval();
+-
+-        let Some(next) = GRID.lock().next_vsync else {
+-            break;
+-        };
+-
+-        // Wake a lead before the tick and declare the vsync at that announce point, so releasing
+-        // WaitGetPoses and predicting poses both start ahead of the real deadline.
+-        let announce = next - RUNNING_START;
+-        let before = Instant::now();
+-        if announce > before {
+-            thread::sleep(announce - before);
+-        }
+-
+-        if ANNOUNCER_EXIT.load(Ordering::Relaxed) {
+-            break;
+-        }
+-
+-        // Signed, and negative once the sleep overshoots, which reads as the vsync having just
+-        // passed. That is what absorbs wake jitter instead of letting it accumulate.
+-        let now = Instant::now();
+-        let offset = if announce >= now {
+-            (announce - now).as_secs_f64()
+-        } else {
+-            -((now - announce).as_secs_f64())
+-        };
+-
+-        unsafe { crate::SendVSync(offset) };
+-
+-        // Advance along the grid, losing whole ticks that were missed rather than accumulating
+-        // debt and snapping.
+-        let mut grid = GRID.lock();
+-        grid.last_tick = Some(next);
+-
+-        let mut next = next + interval;
+-        let now = Instant::now();
+-        while next <= now {
+-            next += interval;
+-            grid.skipped_vsyncs += 1;
+-        }
+-        grid.next_vsync = Some(next);
+-    }
+-
+-    *GRID.lock() = Grid::EMPTY;
+-}
+-
+-#[unsafe(export_name = "StartVsyncAnnouncer")]
+-extern "C" fn start_vsync_announcer() {
+-    let mut announcer = ANNOUNCER.lock();
+-    if announcer.is_some() {
+-        return;
+-    }
+-
+-    if FRAME_INTERVAL_NS.load(Ordering::Relaxed) == 0 {
+-        error!("Vsync announcer started before a refresh rate was set; not pacing.");
+-        return;
+-    }
+-
+-    ANNOUNCER_EXIT.store(false, Ordering::Relaxed);
+-    *announcer = Some(thread::spawn(announcer_loop));
+-}
+-
+-#[unsafe(export_name = "StopVsyncAnnouncer")]
+-extern "C" fn stop_vsync_announcer() {
+-    ANNOUNCER_EXIT.store(true, Ordering::Relaxed);
+-
+-    let handle = ANNOUNCER.lock().take();
+-    if let Some(handle) = handle {
+-        handle.join().ok();
+-    }
+-}
+-
+-/// Holds the presenting thread until the tick after the one just declared, plus whatever extra
+-/// frames SteamVR asked to be throttled by.
+-///
+-/// Pacing here rather than owning the vsync declaration is what keeps a slow frame costing one
+-/// frame: the announcer fires on the grid whatever happens on this thread. Without the hold the
+-/// compositor free-runs at encode speed and floods the client's decoder.
+-#[unsafe(export_name = "PaceAfterPresent")]
+-extern "C" fn pace_after_present(throttle_frames: u32) {
+-    let interval = frame_interval();
+-
+-    let Some(last_tick) = GRID.lock().last_tick else {
+-        // No tick has been declared yet, so there is no grid position to measure from.
+-        thread::sleep(interval);
+-        return;
+-    };
+-
+-    let until = last_tick + interval * (1 + throttle_frames);
+-    let now = Instant::now();
+-    if until > now {
+-        thread::sleep(until - now);
+-    }
+-}
+-
+-/// Reads and clears the skipped tick count.
+-#[unsafe(export_name = "TakeSkippedVsyncs")]
+-extern "C" fn take_skipped_vsyncs() -> u32 {
+-    let mut grid = GRID.lock();
+-    let skipped = grid.skipped_vsyncs;
+-    grid.skipped_vsyncs = 0;
+-
+-    skipped.min(u32::MAX as u64) as u32
+-}

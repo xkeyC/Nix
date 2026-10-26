@@ -1,0 +1,74 @@
+diff --git a/c_engine/portal_engine.c b/c_engine/portal_engine.c
+index 7e46053..daac1d7 100644
+--- a/c_engine/portal_engine.c
++++ b/c_engine/portal_engine.c
+@@ -355,6 +355,15 @@ static int wait_for_first_frame(struct uu_portal *p) {
+     pthread_mutex_unlock(&p->lock);
+     return result;
+ }
++/* UU_PORTAL_MONITOR=<index>: request one stream per monitor and capture only that one.
++ * KDE's RemoteDesktop portal shows no screen chooser and streams the whole workspace
++ * when multiple sources are not requested. Returns -1 when unset. */
++static int portal_monitor_index(void) {
++    const char *value = getenv("UU_PORTAL_MONITOR");
++    if (!value || !*value) return -1;
++    char *end = NULL; long index = strtol(value, &end, 10);
++    return *end || index < 0 || index > 64 ? -1 : (int)index;
++}
+ static int read_stream_result(struct uu_portal *p, GVariant *results) {
+     guint devices = 0;
+     GVariant *streams = g_variant_lookup_value(results, "streams", G_VARIANT_TYPE("a(ua{sv})"));
+@@ -362,10 +371,25 @@ static int read_stream_result(struct uu_portal *p, GVariant *results) {
+     fprintf(stderr, "Portal authorization result: devices_present=%d device_bits=%u stream_count=%zu\n",
+         has_devices, devices, streams ? (size_t)g_variant_n_children(streams) : 0);
+     int error = 0;
+-    if (!has_devices || (devices & 3) != 3 || !streams || g_variant_n_children(streams) != 1) {
++    int monitor = portal_monitor_index();
++    size_t count = streams ? g_variant_n_children(streams) : 0;
++    for (size_t i = 0; monitor >= 0 && i < count; i++) {
++        GVariant *entry = g_variant_get_child_value(streams, i), *properties; guint node;
++        int x = 0, y = 0, w = 0, h = 0;
++        g_variant_get(entry, "(u@a{sv})", &node, &properties);
++        g_variant_lookup(properties, "position", "(ii)", &x, &y);
++        g_variant_lookup(properties, "size", "(ii)", &w, &h);
++        fprintf(stderr, "Portal monitor stream %zu: position=%d,%d size=%dx%d%s\n", i, x, y, w, h, (size_t)monitor == i ? " (selected)" : "");
++        g_variant_unref(properties); g_variant_unref(entry);
++    }
++    if (monitor >= 0 && (size_t)monitor >= count && count > 0) {
++        fprintf(stderr, "UU_PORTAL_MONITOR=%d out of range (%zu streams); using stream 0\n", monitor, count);
++        monitor = 0;
++    }
++    if (!has_devices || (devices & 3) != 3 || !streams || (monitor < 0 ? count != 1 : count < 1)) {
+         error = 6;
+     } else {
+-        GVariant *entry = g_variant_get_child_value(streams, 0), *properties;
++        GVariant *entry = g_variant_get_child_value(streams, monitor < 0 ? 0 : (size_t)monitor), *properties;
+         g_variant_get(entry, "(u@a{sv})", &p->node, &properties);
+         /* Optional 'size' is compositor logical coordinates, not frame pixels. */
+         g_variant_lookup(properties, "size", "(ii)", &p->logical_width, &p->logical_height);
+@@ -432,7 +456,7 @@ static struct uu_portal *open_persist(const char *restore, void (*save_token)(co
+     g_variant_unref(results);
+     g_variant_builder_init(&options, G_VARIANT_TYPE_VARDICT);
+     g_variant_builder_add(&options, "{sv}", "types", g_variant_new_uint32(1));
+-    g_variant_builder_add(&options, "{sv}", "multiple", g_variant_new_boolean(FALSE));
++    g_variant_builder_add(&options, "{sv}", "multiple", g_variant_new_boolean(portal_monitor_index() >= 0));
+     /* Hidden cursor avoids duplicate pointer; supported since ScreenCast v1. */
+     results = request(p, SCREEN, "SelectSources", &options, 1, error);
+     if (!results) goto done;
+diff --git a/src/input.rs b/src/input.rs
+index 675940e..b0673e3 100644
+--- a/src/input.rs
++++ b/src/input.rs
+@@ -334,6 +334,12 @@ impl InputInjector {
+             let result=crate::wayland::move_pointer(x,y,false);
+             if result!=-2 { return result; }
+         }
++        // UU_PORTAL_MONITOR captures one output; uinput ABS would span the whole desktop, so
++        // absolute motion goes through the Portal stream of that output instead.
++        if !relative && self.backend==crate::desktop_backend::DesktopBackend::Portal
++            && std::env::var_os("UU_PORTAL_MONITOR").is_some_and(|v| !v.is_empty()) {
++            if let Some(portal)=self.portal.lock().unwrap().as_ref() { return self.portal_result("motion", portal.move_pointer(f64::from(x),f64::from(y),false)); }
++        }
+         // X11 multi-screen: the point is inside the selected monitor; XTest and uinput span the root.
+         let placement=if relative || self.backend!=crate::desktop_backend::DesktopBackend::X11 {None} else {crate::wayland::x11_placement()};
+         let (x,y)=placement.map_or((x,y),|(ox,oy)|(x+ox,y+oy));

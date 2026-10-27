@@ -30,6 +30,11 @@ in
       addons = [ fcitx5-rime-rime-ice ];
       waylandFrontend = true;
 
+      # Fcitx5 默认把左 Shift 设成“临时切换到第一个输入法（keyboard-us）”，按键到不了 RIME，
+      # 而切走时 fcitx5-rime 会把高亮的候选词上屏。清空它，左 Shift 交给雾凇拼音自己处理：
+      # ascii_composer 里 Shift_L 是 commit_code，已敲的字母直接作为英文上屏并切到英文。
+      settings.globalOptions."Hotkey/AltTriggerKeys" = { };
+
       # 默认输入法设为 RIME；同时保留 keyboard-us 便于 Ctrl+Space 切换英文。
       settings.inputMethod = {
         "GroupOrder"."0" = "Default";

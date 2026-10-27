@@ -51,7 +51,24 @@ in
 
   home.packages = with pkgs; [
     brave
+    go-musicfox # 命令行网易云音乐，启动命令 musicfox
+    mpv # go-musicfox 的播放引擎
   ];
+
+  # go-musicfox：用 mpv 播放（Linux 默认是程序自带的 beep 引擎），音质选超清母带 jymaster
+  # （需要 SVIP，拿不到时服务器会降级）。没写的项用程序内置默认值。
+  # 界面里换主题时 musicfox 会回写这个文件，所以只在文件不存在时写一份，之后可以自由编辑。
+  home.activation.configureMusicfox = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    musicfoxConfig="''${XDG_CONFIG_HOME:-$HOME/.config}/go-musicfox/config.toml"
+    if [ ! -e "$musicfoxConfig" ]; then
+      run mkdir -p "$(dirname "$musicfoxConfig")"
+      run install -m 644 ${pkgs.writeText "musicfox-config.toml" ''
+        [player]
+        engine = "mpv"
+        songLevel = "jymaster"
+      ''} "$musicfoxConfig"
+    fi
+  '';
 
   programs.kitty.enable = true;
 

@@ -22,6 +22,7 @@
     ./uu-remote.nix    # UU 远程 Linux 被控端（非官方 uu-remote-linux）
     ./home-manager.nix # 用户级软件包（QQ / FlClash）与 Home Manager 设置
     ./dev-toolchains.nix # 开发工具链（Rust / Python / Node / Flutter / Go / C++）+ nix-ld
+    ./ai               # 本地 AI 服务（Strata，不自启）
   ];
 
   # 启用 flakes（nixos-rebuild 调用 nix 时会自带 nix-command/flakes 参数）。

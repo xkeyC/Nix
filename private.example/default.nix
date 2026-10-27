@@ -24,4 +24,13 @@
     "/mnt/data".device = uuid "<NTFS 数据盘 UUID>";
     "/mnt/application".device = uuid "<NTFS 应用盘 UUID>";
   };
+
+  # Strata（nixos/ai/strata.nix）。profile 由下面的命令生成（preset <名字> → launch-<名字>）：
+  #   strata launch --model-path <数据目录>/models/models/<模型> \
+  #     --data-dir <数据目录>/models --save-preset <名字> --yes --no-tui
+  #   strata launch --stop
+  local.strata = {
+    dataDir = "<Strata 数据目录>";
+    profile = "launch-<名字>";
+  };
 }

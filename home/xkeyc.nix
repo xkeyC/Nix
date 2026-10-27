@@ -51,7 +51,15 @@ in
 
   home.packages = with pkgs; [
     brave
-    go-musicfox # 命令行网易云音乐，启动命令 musicfox
+    # 命令行网易云音乐，启动命令 musicfox。取播放链接原本走网页端接口（weapi），
+    # 那里请求 jymaster 最多只给 96k 的 Hi-Res；改走客户端接口（eapi），SVIP 才能拿到
+    # 192k 的超清母带。补丁打在 vendor 的 netease-music 库上，vendor 在 configure 时才复制进来。
+    (go-musicfox.overrideAttrs (old: {
+      postConfigure = (old.postConfigure or "") + ''
+        chmod -R u+w vendor/github.com/go-musicfox/netease-music
+        patch -p1 -d vendor/github.com/go-musicfox/netease-music < ${./packages/go-musicfox-eapi-song-url.patch}
+      '';
+    }))
     mpv # go-musicfox 的播放引擎
   ];
 

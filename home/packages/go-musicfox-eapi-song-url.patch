@@ -1,0 +1,18 @@
+--- a/service/song_url_v1_service.go
++++ b/service/song_url_v1_service.go
+@@ -48,7 +48,12 @@
+ 	}
+ 	data["encodeType"] = service.EncodeType
+ 
+-	api := "https://music.163.com/weapi/song/enhance/player/url/v1"
+-	code, bodyBytes, err := util.CallWeapi(api, data)
+-	return code, bodyBytes, err
++	// weapi（网页端）请求 jymaster 最多只给 hires，改走 eapi（客户端）
++	form := make(map[string]string, len(data))
++	for k, v := range data {
++		form[k], _ = v.(string)
++	}
++	options := &util.Options{Crypto: "eapi", Url: "/api/song/enhance/player/url/v1", SkipUNM: service.SkipUNM}
++	code, bodyBytes, _ := util.CreateRequest("POST", "https://interface.music.163.com/eapi/song/enhance/player/url/v1", form, options)
++	return code, bodyBytes, nil
+ }

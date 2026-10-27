@@ -75,6 +75,92 @@ in
       --group General --key "exclude folders" --type path "/mnt/data/,/mnt/application/"
   '';
 
+  # 窗口回到上次所在的显示器。主显示器走 HDMI 2.1，开机时比右边的竖屏（DP）晚几秒接上，
+  # 登录时恢复/自启的窗口会全开在竖屏上。KWin QML 脚本：
+  #   - 记录：两块屏都在线时，窗口换到哪块屏就记下“程序 → 显示器”（~/.local/state/kwin-window-screens.ini）
+  #   - 还原：只在登录后 2 分钟内，把新开的窗口送回它上次的显示器；目标屏还没接上就等它出现
+  # 2 分钟后不再干预，KWin 照常摆放。
+  xdg.dataFile."kwin/scripts/window-screen-memory/metadata.json".text = builtins.toJSON {
+    KPlugin = {
+      Id = "window-screen-memory";
+      Name = "窗口回到上次的显示器";
+      Description = "登录后把窗口送回上次所在的显示器";
+      Version = "1.0";
+      License = "MIT";
+      EnabledByDefault = true;
+    };
+    X-Plasma-API = "declarativescript";
+    X-Plasma-MainScript = "ui/main.qml";
+    KPackageStructure = "KWin/Script";
+  };
+  xdg.dataFile."kwin/scripts/window-screen-memory/contents/ui/main.qml".text = ''
+    import QtQuick
+    import QtCore
+    import org.kde.kwin
+
+    Item {
+        id: root
+        readonly property int restoreWindowMs: 2 * 60 * 1000
+        readonly property double started: Date.now()
+        property var pending: []
+
+        Settings {
+            id: store
+            location: StandardPaths.writableLocation(StandardPaths.GenericStateLocation) + "/kwin-window-screens.ini"
+            property string screens: "{}" // JSON：resourceClass → 显示器名
+        }
+
+        function load() {
+            try { return JSON.parse(store.screens); } catch (e) { return {}; }
+        }
+        function relevant(w) {
+            return w.normalWindow && w.moveableAcrossScreens && w.resourceClass;
+        }
+        // 两块屏都在线才记录：登录时只有竖屏的那几秒，窗口在哪都不算数
+        function allScreensUp() {
+            return Workspace.screens.length >= 2;
+        }
+        function remember(w) {
+            if (!relevant(w) || !w.output || !allScreensUp()) return;
+            const map = load();
+            if (map[w.resourceClass] === w.output.name) return;
+            map[w.resourceClass] = w.output.name;
+            store.screens = JSON.stringify(map);
+            store.sync();
+        }
+        // 送回上次的显示器；目标屏还没接上返回 false
+        function restore(w) {
+            const target = load()[w.resourceClass];
+            if (!target) { remember(w); return true; } // 没记录过：记下现在的位置
+            const out = Workspace.screens.find(o => o.name === target);
+            if (!out) return false;
+            if (w.output !== out) Workspace.sendClientToScreen(w, out);
+            return true;
+        }
+        function track(w) {
+            if (!relevant(w)) return;
+            w.outputChanged.connect(() => remember(w));
+            if (Date.now() - started < restoreWindowMs) {
+                if (!restore(w)) pending.push(w);
+            } else {
+                remember(w);
+            }
+        }
+
+        Connections {
+            target: Workspace
+            function onWindowAdded(w) { root.track(w); }
+            function onWindowRemoved(w) { root.pending = root.pending.filter(x => x !== w); }
+            function onScreensChanged() { root.pending = root.pending.filter(w => !root.restore(w)); }
+        }
+        Component.onCompleted: Workspace.stackingOrder.forEach(track)
+    }
+  '';
+  home.activation.enableWindowScreenMemory = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run ${pkgs.kdePackages.kconfig}/bin/kwriteconfig6 --file kwinrc \
+      --group Plugins --key window-screen-memoryEnabled --type bool true
+  '';
+
   # DeepSeek Harness web desktop shell; launch with: dsh --profile web
   programs.dsh = {
     enable = true;

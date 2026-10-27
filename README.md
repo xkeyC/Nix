@@ -29,6 +29,7 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `system.nix` | 引导（systemd-boot，保留最近 4 个版本）、主机名、网络、时区、语言、CPU 微码 |
 | `nix-settings.nix` | 允许安装非自由软件；国内镜像（上交、清华、中科大）和 CUDA 二进制缓存 |
 | `users.nix` | 用户 xkeyc |
+| `shell.nix` | 登录 shell 用 zsh + oh-my-zsh（自动建议、语法高亮）；Claude Code 通过 `CLAUDE_CODE_SHELL` 仍用 bash |
 | `ssh.nix` | SSH 服务；root 只能用密钥登录 |
 | `nvidia.nix` | NVIDIA 驱动（开源内核模块）、Docker 的 GPU 支持、CUDA 13；修复了 `nvidia-smi` 启动即崩溃的问题 |
 | `desktop.nix` | KDE Plasma 6、登录界面、XWayland、Noto 字体、音频（采样率自适应、主板光纤输出修正、RTKit 实时优先级） |

@@ -38,7 +38,7 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `storage.nix` | 挂载 NTFS 数据盘 `/mnt/data` 和 `/mnt/application`（内核 7.1 起的新 ntfs 驱动，出错转只读） |
 | `power-management.nix` | 关闭睡眠和休眠；空闲 10 分钟只关显示器 |
 | `dns.nix` | DNS：DNSPod、阿里、Cloudflare |
-| `gaming.nix` | Steam，以及 DW-Proton 兼容层 |
+| `gaming.nix` | Steam、DW-Proton 兼容层、ntsync |
 | `dev-toolchains.nix` | 开发工具：gh、Rust、Python、Node、Flutter、Go、C/C++、.NET；git 设置；nix-ld（让下载来的通用 Linux 程序能直接运行） |
 | `home-manager.nix` | 用户软件：QQ（`/mnt/data` 没挂载时不启动）、FlClash、Claude Code、Codex |
 | `uu-remote.nix` | UU 远程被控端，以及开机自动登录 |

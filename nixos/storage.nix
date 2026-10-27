@@ -26,5 +26,16 @@ in
   # 数据盘挂载前确保内核 ntfs 驱动已加载。
   boot.kernelModules = [ "ntfs" ];
 
+  # 7.3 的 ntfs 驱动把稀疏文件的后续段（扩展 MFT 记录里 lowest_vcn ≠ 0 的 $DATA）判成损坏：
+  # 只有第一段带 compressed_size 字段，校验却要求每段都有。Steam、网盘下载器在 Windows 下
+  # 建的都是稀疏文件，读到碎片多的大文件就报 “Corrupt 0x80 attribute” 并把整块盘转成只读。
+  # 上游修复 8deea344965f（7.3 之后），这里是移植到 7.3 的版本；内核带上这个修复后删掉。
+  boot.kernelPatches = [
+    {
+      name = "ntfs-sparse-continuation-extent";
+      patch = ./packages/ntfs-sparse-continuation-extent.patch;
+    }
+  ];
+
   environment.systemPackages = [ pkgs.ntfsprogs-plus ];
 }

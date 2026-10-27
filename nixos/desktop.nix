@@ -24,4 +24,16 @@
     "default.clock.rate" = 48000;
     "default.clock.allowed-rates" = [ 44100 48000 88200 96000 176400 192000 ];
   };
+  # 主板 USB 声卡（MSI PRO X670-P 的 Realtek ALC4080）的光纤输出：alsa-ucm-conf 把它指到 PCM 3，
+  # 那是 S/PDIF 端点上给 AC-3/DTS 码流直通用的 altset（FORMAT_TYPE_III），只有 16 bit，
+  # 放普通 PCM 到 96 kHz 就爆音。同一端点的 PCM 2 才是普通 PCM（16/24 bit），改走它就不爆了（Windows 下本来就不爆）。
+  services.pipewire.wireplumber.extraConfig."50-alc4080-spdif"."monitor.alsa.rules" = [
+    {
+      matches = [ { "node.name" = "alsa_output.usb-Generic_USB_Audio-00.HiFi__SPDIF__sink"; } ];
+      actions.update-props."api.alsa.path" = "hw:Audio,2";
+    }
+  ];
+
+  # PipeWire 靠 RTKit 把音频线程提到实时优先级；没有它就是普通线程，系统忙时容易断流。
+  security.rtkit.enable = true;
 }

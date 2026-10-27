@@ -1,14 +1,14 @@
 # Chaos HDR：NVIDIA TrueHDR（SDR→HDR）+ 锐化的 KWin 原生特效。
 #
 # 上游 https://github.com/chaosfox26/chaos-hdr 只提供 CachyOS/Arch 的安装脚本
-# （pacman 装依赖、uv 拉 Python 包、写死 /usr/include/kwin，项目目录兼作数据目录）。
+# （用 pacman 安装依赖、用 uv 下载 Python 包、写死 /usr/include/kwin，项目目录同时作为数据目录）。
 # 这里改成纯 Nix 构建：
 #   * 针对系统同一个 kdePackages.kwin 编译，插件放进 lib/qt-6/plugins/kwin/effects/plugins，
 #     KWin 通过 /run/current-system/sw 直接找到，不再需要上游的 QML 加载器、
-#     版本校验和 Python 更新器；KWin 升级时 Nix 会自动重编。
+#     版本校验和 Python 更新器；KWin 升级时 Nix 会自动重新编译。
 #   * NGX 头文件与静态加载器来自 NVIDIA/DLSS 固定提交（哈希取自上游 sdk.py）。
 #   * TrueHDR 运行时只取 nvidia-vfx wheel 里的 libnvidia-ngx-truehdr.so（仅依赖 glibc，
-#     NGX 通过上游编进特效里的 <site>/nvvfx/libs 路径加载它；原样保留、不做 patchelf）。
+#     NGX 通过上游编译进特效里的 <site>/nvvfx/libs 路径加载它；原样保留、不做 patchelf）。
 #   * 可写数据（profile.json、窗口授权、状态文件）从项目目录改到
 #     $XDG_DATA_HOME/chaos-hdr（默认 ~/.local/share/chaos-hdr）。
 { lib
@@ -105,7 +105,7 @@ stdenv.mkDerivation {
     libxkbcommon
   ];
 
-  # 两个独立的 CMake 工程（KWin 特效 + Alt+Z 快捷键/面板），自己驱动。
+  # 两个独立的 CMake 工程（KWin 特效 + Alt+Z 快捷键/面板），这里自己调用 cmake 构建。
   dontUseCmakeConfigure = true;
 
   postPatch = ''
@@ -170,7 +170,7 @@ stdenv.mkDerivation {
       $out/lib/qt-6/plugins/kwin/effects/plugins/truehdr_desktop.so
     install -Dm644 build-desktop/desktop_input.spv $out/share/chaos-hdr/desktop_input.spv
     install -Dm755 build-controls/truehdr-panel $out/bin/truehdr-panel
-    # 上游的独立自检：在单独进程里跑一遍 OpenGL→Vulkan→TrueHDR，不碰 KWin。
+    # 上游的独立自检：在单独的进程里运行一遍 OpenGL→Vulkan→TrueHDR，不影响 KWin。
     install -Dm755 build-desktop/truehdr-desktop-gpu-test $out/libexec/chaos-hdr/truehdr-desktop-gpu-test
 
     mkdir -p $out/share/chaos-hdr/vendor
@@ -185,9 +185,9 @@ stdenv.mkDerivation {
     runHook postInstall
   '';
 
-  # 静态 NGX 加载器在运行时 dlopen 驱动里的 libnvidia-ngx.so（走本库的 RUNPATH）。
+  # 静态 NGX 加载器在运行时 dlopen 驱动里的 libnvidia-ngx.so（通过本库的 RUNPATH 查找）。
   # TrueHDR 特性库则自己 dlopen("libnvidia-ml.so.1")，而它是从 memfd 加载、没有 RUNPATH，
-  # 在 NixOS 上找不到驱动目录；失败后 NVIDIA 代码会解引用空列表，直接让 KWin 段错误。
+  # 在 NixOS 上找不到驱动目录；失败后 NVIDIA 代码会解引用空列表，导致 KWin 段错误。
   # 预先把 NVML 作为依赖加载进进程，之后按 soname 的 dlopen 会直接命中它。
   postFixup = ''
     for f in $out/lib/qt-6/plugins/kwin/effects/plugins/truehdr_desktop.so \

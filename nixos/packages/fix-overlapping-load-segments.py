@@ -1,5 +1,5 @@
 # 修复 patchelf 产生的重叠 LOAD 段：后映射的只读段会覆盖前一个可写段的同一页，
-# 使 .dynamic 变成只读，ld.so 写 DT_DEBUG 时段错误。给后一个段补上前一个段的权限。
+# 使 .dynamic 变成只读，ld.so 写入 DT_DEBUG 时会段错误。这里给后一个段加上前一个段的权限。
 import struct,sys
 for path in sys.argv[1:]:
     with open(path,'r+b') as f:

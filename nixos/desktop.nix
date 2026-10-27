@@ -19,14 +19,14 @@
 
   # 音频：PipeWire 由 Plasma 默认启用，默认把所有声音重采样到 48 kHz。
   # 放开主板 USB 声卡支持的全部采样率：声卡空闲时按第一个开始播放的音源切换
-  # （44.1 kHz 的音乐就按 44.1 kHz 输出，不重采样）；正在播放时不换档，后来的声音会被重采样。
+  # （44.1 kHz 的音乐就按 44.1 kHz 输出，不重采样）；正在播放时不切换采样率，之后开始的声音会被重采样。
   services.pipewire.extraConfig.pipewire."10-clock-rate"."context.properties" = {
     "default.clock.rate" = 48000;
     "default.clock.allowed-rates" = [ 44100 48000 88200 96000 176400 192000 ];
   };
-  # 主板 USB 声卡（MSI PRO X670-P 的 Realtek ALC4080）的光纤输出：alsa-ucm-conf 把它指到 PCM 3，
-  # 那是 S/PDIF 端点上给 AC-3/DTS 码流直通用的 altset（FORMAT_TYPE_III），只有 16 bit，
-  # 放普通 PCM 到 96 kHz 就爆音。同一端点的 PCM 2 才是普通 PCM（16/24 bit），改走它就不爆了（Windows 下本来就不爆）。
+  # 主板 USB 声卡（MSI PRO X670-P 的 Realtek ALC4080）的光纤输出：alsa-ucm-conf 把它指向 PCM 3，
+  # 那是 S/PDIF 端点上供 AC-3/DTS 码流直通使用的 altset（FORMAT_TYPE_III），只支持 16 bit，
+  # 用它播放 96 kHz 的普通 PCM 会爆音。同一端点的 PCM 2 才是普通 PCM（16/24 bit），改用它之后就不再爆音（Windows 下没有这个问题）。
   services.pipewire.wireplumber.extraConfig."50-alc4080-spdif"."monitor.alsa.rules" = [
     {
       matches = [ { "node.name" = "alsa_output.usb-Generic_USB_Audio-00.HiFi__SPDIF__sink"; } ];
@@ -34,6 +34,6 @@
     }
   ];
 
-  # PipeWire 靠 RTKit 把音频线程提到实时优先级；没有它就是普通线程，系统忙时容易断流。
+  # PipeWire 通过 RTKit 把音频线程提升到实时优先级；没有 RTKit 时只有普通优先级，系统繁忙时容易断流。
   security.rtkit.enable = true;
 }

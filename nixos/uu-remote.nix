@@ -1,16 +1,16 @@
-# UU 远程 Linux 被控端（非官方，uu-remote-linux）：让官方 Mac / Windows / 手机客户端远控本机。
+# UU 远程 Linux 被控端（非官方，uu-remote-linux）：让官方 Mac / Windows / 手机客户端远程控制本机。
 #
-# 打包见 packages/uu-remote-linux.nix。替代上游 install.sh / deb 做的事：
+# 打包见 packages/uu-remote-linux.nix。这里替代了上游 install.sh / deb 包所做的安装工作：
 #   * uuremote-native.service：用户级服务，随 Plasma 图形会话启动。单元名不能改，
 #     程序里的 `show`、托盘「退出」等会直接 `systemctl --user start/stop uuremote-native.service`。
 #   * 开机自启：服务依附 Plasma 图形会话，开机停在登录界面时不会运行。因此自动登录
-#     xkeyc，并让 Plasma 一启动就锁屏（kscreenlockerrc LockOnStart）；远程连上后用
+#     xkeyc，并让 Plasma 一启动就锁屏（kscreenlockerrc LockOnStart）；远程连接后用
 #     官方客户端的「自动解锁被控端」（PAM 校验登录密码）进入桌面。
-#     自动登录没有输入密码，KDE 钱包（pam_kwallet）不会自动解锁，首次访问时会弹密码框。
-#   * /dev/uinput 的 uaccess 规则：Wayland 下改用内核级虚拟键鼠，绕开 portal 授权和键盘布局丢符号。
-#     uaccess 只把权限给当前坐在本机前登录的用户。
+#     自动登录没有输入密码，KDE 钱包（pam_kwallet）不会自动解锁，首次访问时会弹出密码框。
+#   * /dev/uinput 的 uaccess 规则：Wayland 下改用内核级的虚拟键盘鼠标，绕过 portal 授权，也解决键盘布局丢失符号的问题。
+#     uaccess 只把权限授予当前在本机前登录的用户。
 #
-# 首次使用：桌面里运行 `uuremote-server login`，用 UU 远程 App 扫码（或服务启动后自动弹窗）。
+# 首次使用：桌面里运行 `uuremote-server login`，用 UU 远程 App 扫码（服务启动后也会自动弹出登录窗口）。
 # 登录信息在 ~/.config/uuremote/config.json。日志：journalctl --user -u uuremote-native -f
 # 排查：uuremote-server doctor
 { pkgs, ... }:

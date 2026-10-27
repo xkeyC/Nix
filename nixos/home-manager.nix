@@ -6,15 +6,15 @@
 #   * Claude Code CLI（命令 claude；官方二进制打包）
 #   * Codex CLI（命令 codex；Rust 实现）
 #
-# 都放在用户 profile 里（~/.nix-profile/bin），不进系统包集合。
+# 都放在用户 profile 里（/etc/profiles/per-user/xkeyc/bin），不放进系统包集合。
 { config, lib, pkgs, inputs, ... }:
 
 let
   flclash = pkgs.callPackage ./packages/flclash.nix { };
 
   # QQ 的聊天记录在 /mnt/data 上（~/.config/QQ 里的 nt_qq_*、global 是指过去的符号链接）。
-  # 盘没挂上时启动，QQ 会把目录建在根分区的空挂载点里，挂上后被盖住、记录“丢失”。
-  # 所以命令和菜单项都换成先检查挂载的包装：登录时会话恢复拉起 QQ 可能比挂载早，先等 10 秒。
+  # 如果在盘没有挂载时启动，QQ 会把目录创建在根分区的空挂载点里，挂载后这些目录被覆盖，聊天记录看起来就“丢失”了。
+  # 所以命令和菜单项都换成了先检查挂载的包装脚本：登录时会话恢复启动 QQ 可能比挂载更早，最多先等 10 秒。
   qq = pkgs.symlinkJoin {
     name = "qq-${pkgs.qq.version}";
     paths = [ pkgs.qq ];
@@ -41,7 +41,7 @@ in
   };
 
   # 遇到已有的非符号链接文件（例如残留的 10-hm-fonts.conf）时，
-  # 自动改名为 *.hm-backup 而不是让整个 Home Manager 激活失败。
+  # 自动改名为 *.hm-backup，防止整个 Home Manager 激活失败。
   home-manager.backupFileExtension = "hm-backup";
 
   home-manager.sharedModules = [

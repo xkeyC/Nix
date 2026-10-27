@@ -9,8 +9,8 @@
     modesetting.enable = true;
     nvidiaSettings = true;
     # nixpkgs 用 patchelf 处理后的 nvidia-smi / nvidia-cuda-mps-control / nvidia-powerd
-    # 带有重叠的 LOAD 段：后映射的只读段盖住了 .dynamic 所在页，ld.so 启动时写 DT_DEBUG
-    # 直接段错误（ksystemstats 的 GPU 监控会不停触发 coredump）。这里在 fixup 之后补正段权限。
+    # 带有重叠的 LOAD 段：后映射的只读段覆盖了 .dynamic 所在的页，ld.so 启动时写入 DT_DEBUG
+    # 就会段错误（ksystemstats 的 GPU 监控会不停触发 coredump）。这里在 fixup 之后修正段权限。
     package = config.boot.kernelPackages.nvidiaPackages.new_feature.overrideAttrs (old: {
       nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.python3 ];
       postFixup = (old.postFixup or "") + ''

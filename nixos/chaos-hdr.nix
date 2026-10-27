@@ -1,4 +1,4 @@
-# Chaos HDR：给选中的 SDR 窗口（例如 DW-Proton 跑的游戏）做 NVIDIA TrueHDR + 锐化。
+# Chaos HDR：给选中的 SDR 窗口（例如用 DW-Proton 运行的游戏）做 NVIDIA TrueHDR + 锐化。
 #
 # 打包见 packages/chaos-hdr.nix。替代上游安装脚本里的 install.py / desktop.py：
 #   * chaos-hdr-effect：登录后通过 D-Bus 让 KWin 加载 truehdr_desktop 特效。
@@ -7,11 +7,11 @@
 #   * chaos-hdr-controls：注册 Alt+Z 全局快捷键，按下后通知特效打开侧栏。
 # 数据目录：~/.local/share/chaos-hdr（画面配置、已授权窗口、状态文件）。
 #
-# 游戏侧注意（DW-Proton）：
+# 游戏方面的注意事项（DW-Proton）：
 #   * 保持默认的 X11/XWayland；PROTON_ENABLE_WAYLAND=1 会让 Wine 把画面放进
 #     子 surface，特效会跳过该窗口。
-#   * 不要同时开 PROTON_ENABLE_HDR / DXVK_HDR，游戏已经输出 HDR 时特效直接跳过。
-#   * 不要套 gamescope。
+#   * 不要同时开启 PROTON_ENABLE_HDR / DXVK_HDR，游戏已经输出 HDR 时特效直接跳过。
+#   * 不要在 gamescope 里运行。
 { pkgs, ... }:
 
 let

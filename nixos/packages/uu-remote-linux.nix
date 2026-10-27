@@ -1,12 +1,12 @@
 # uu-remote-linux：非官方网易 UU 远程 Linux 被控端（uuremote-server）+ 实验性控制端（uuremote-viewer）。
 #
-# 上游 https://github.com/VallierDev/uu-remote-linux 只提供 deb / tarball / 源码编译（apt 装依赖）。
+# 上游 https://github.com/VallierDev/uu-remote-linux 只提供 deb / tarball / 源码编译（用 apt 安装依赖）。
 # 这里改成纯 Nix 构建：
-#   * 特性 wayland,portal：本机是 KDE Plasma Wayland，走 xdg-desktop-portal（PipeWire + libei）。
-#     不开 engine-plugins，Wayland/Portal 引擎直接静态链进主程序，不用再按 /usr/lib 路径找 libuu-*.so。
-#   * native-viewer,viewer-sdl：同时编出控制端（视频用外部 ffmpeg 进程解码）。
+#   * 特性 wayland,portal：本机是 KDE Plasma Wayland，使用 xdg-desktop-portal（PipeWire + libei）。
+#     不开 engine-plugins，Wayland/Portal 引擎直接静态链接进主程序，不再需要按 /usr/lib 路径查找 libuu-*.so。
+#   * native-viewer,viewer-sdl：同时编译出控制端（视频用外部 ffmpeg 进程解码）。
 #   * 运行时 dlopen 的裸 soname（libpam、libgbm、托盘用的 ayatana-appindicator）在 NixOS 上找不到，
-#     补进可执行文件的 RUNPATH；不用 LD_LIBRARY_PATH，以免泄漏给远程终端里起的 shell。
+#     补充到可执行文件的 RUNPATH；不使用 LD_LIBRARY_PATH，以免泄漏给远程终端里启动的 shell。
 #   * ffmpeg（编码，需 libx264 / h264_nvenc）、wl-clipboard 等外部命令追加到 PATH 末尾。
 { lib
 , rustPlatform
@@ -45,8 +45,8 @@ rustPlatform.buildRustPackage {
     hash = "sha256-KqVHkYqfOtdGEjaVn3YQblD+x8V58HZacP1iGMJQSsI=";
   };
 
-  # KDE 的远程控制 portal 不弹屏幕选择框，多屏时直接把整个工作区拼成一路画面。
-  # 补丁新增 UU_PORTAL_MONITOR=<序号>：按显示器分流，只采集其中一块，绝对鼠标改走该屏的 portal 流。
+  # KDE 的远程控制 portal 不弹出屏幕选择框，多屏时直接把整个工作区拼成一路画面。
+  # 补丁新增 UU_PORTAL_MONITOR=<序号>：按显示器分别请求画面流，只采集其中一块，绝对坐标的鼠标事件改为发送到该屏的 portal 流。
   patches = [ ./uu-remote-linux-portal-monitor.patch ];
 
   # 上游 Cargo.lock 的副本（与 rev 一致；升级 rev 时一并替换）。

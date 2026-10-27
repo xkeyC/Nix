@@ -1,4 +1,4 @@
-# DLSS5VKLayer：游戏里的 Vulkan 层 + Wine 里跑的 DLSS 5 Neural Rendering helper。
+# DLSS5VKLayer：游戏里的 Vulkan 层 + Wine 里运行的 DLSS 5 Neural Rendering helper。
 #
 # 打包见 packages/dlss5vklayer.nix。用法：
 #   1. dlssnr-gui（或 dlssnr-helper start）启动 helper；
@@ -14,9 +14,9 @@
 let
   dlss5vklayer = pkgs.callPackage ./packages/dlss5vklayer.nix { };
 
-  # 不能 exec：steam-run 最终 exec 成 `bwrap --die-with-parent`。若一路 exec 下去，bwrap 的
-  # 父进程就成了很快退出的 `dlssnr-helper start`，它一退出内核就 SIGKILL 整个 Proton。
-  # 留着这个 shell 当 bwrap 的父进程；stop 时 helper 脚本按进程组发信号，bwrap 也会收到。
+  # 不能 exec：steam-run 最终 exec 成 `bwrap --die-with-parent`。如果一直 exec 下去，bwrap 的
+  # 父进程就成了很快退出的 `dlssnr-helper start`，它一退出，内核就会 SIGKILL 整个 Proton。
+  # 保留这个 shell 作为 bwrap 的父进程；stop 时 helper 脚本按进程组发信号，bwrap 也会收到。
   dwprotonRunner = pkgs.writeShellScriptBin "dlssnr-dwproton" ''
     ${config.programs.steam.package.run}/bin/steam-run \
       ${pkgs.dwproton-bin.steamcompattool}/proton "$@"

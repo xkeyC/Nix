@@ -1,8 +1,8 @@
 # 开发工具链：给 /mnt/application/Projects 下从 Windows 迁移来的项目使用。
 #
-#   * Rust：rustup（按各仓库 rust-toolchain.toml 自动装对应版本，
+#   * Rust：rustup（按各仓库 rust-toolchain.toml 自动安装对应版本，
 #     如 Astrbot/codex 固定 1.95.0）
-#   * Python：python3 + uv（AstrBot 等项目用 uv 按 .python-version 拉 3.12）
+#   * Python：python3 + uv（AstrBot 等项目用 uv 按 .python-version 下载 Python 3.12）
 #   * Node：nodejs + pnpm + yarn（dashboard / NapCatQQ / wrangler 等）
 #   * Flutter / Dart（SCToolBox、FlClash 等）、Go（Clash.Meta、codex2api）
 #   * C/C++：gcc / cmake / ninja / make / pkg-config / protobuf
@@ -15,7 +15,7 @@
 {
   programs.nix-ld = {
     enable = true;
-    # 在默认库集合之外，补上常见预编译工具链/wheel 依赖的库。
+    # 在默认库集合之外，补充常见预编译工具链和 wheel 依赖的库。
     libraries = with pkgs; [
       stdenv.cc.cc.lib
       zlib
@@ -54,7 +54,7 @@
         yarn
 
         # Flutter / Dart、Go
-        # flutter 的输出根目录带 .gitattributes，与 dsh 冲突；降低优先级让 buildEnv 取 dsh 的。
+        # flutter 的输出根目录带 .gitattributes，与 dsh 冲突；降低 flutter 的优先级，让 buildEnv 使用 dsh 的文件。
         (lib.lowPrio flutter)
         go
 
@@ -90,7 +90,7 @@
           # 与 Windows 上的全局身份一致；各仓库自身未配置 user。邮箱在 private/default.nix。
           user.name = "xkeyC";
           init.defaultBranch = "main";
-          # 项目在 NTFS（ntfs3）分区上，权限位不可靠。
+          # 项目在 NTFS 分区上，权限位不可靠。
           core.fileMode = false;
           # 仓库从 Windows 迁移而来：提交时把 CRLF 转回 LF，检出保持 LF。
           core.autocrlf = "input";
@@ -107,10 +107,10 @@
       };
 
       # Rust 构建缓存与 rustup/cargo 数据放在默认 ~/.cargo、~/.rustup；
-      # ~/.local/bin 给 `uv tool install` 安装的命令。
+      # ~/.local/bin 存放 `uv tool install` 安装的命令。
       home.sessionPath = [ "$HOME/.cargo/bin" "$HOME/.local/bin" ];
 
-      # 由 Home Manager 生成 ~/.profile / ~/.bashrc，才会加载 hm-session-vars.sh
+      # 需要由 Home Manager 生成 ~/.profile / ~/.bashrc，它们才会加载 hm-session-vars.sh
       # （上面的 sessionPath 以及其他 home.sessionVariables 依赖它）。
       programs.bash.enable = true;
     }

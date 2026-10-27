@@ -1,13 +1,13 @@
 # ALVR master（21.0.0-dev）。基于 nixpkgs pkgs/by-name/al/alvr/package.nix（20.14.1）改写。
 #
 # 为什么不用 20.14.1：它在 SteamVR 2.16+ 上有一串问题（合成器进程名 vrcompositor.re 导致 303、
-# Vulkan 层没实现 vkWaitForPresentKHR 导致一帧都不出 → 黑屏），修复都只在 master。
+# Vulkan 层没实现 vkWaitForPresentKHR 导致一帧画面都不输出 → 黑屏），修复都只在 master。
 # master 的变化：
 #   * Linux 改用 SteamVR direct-mode 驱动接口（#3398），不再有 vulkan_layer / vrcompositor 包装器 /
 #     drm-lease shim。新 Dashboard 启动时会还原旧版留下的 vrcompositor 符号链接。
-#   * FFmpeg 升到 8.1、单独需要 Vulkan 头文件，见 ffmpeg.nix 和 fix-finding-libs.patch。
-#   * 头显客户端必须装同版本的 nightly APK（v21.0.0-dev），20.14.1 客户端连不上。
-# 升级：改 rev/hash，cargoHash 置空构建一次拿新值，对照 alvr/xtask/patches 更新 ffmpeg.nix。
+#   * FFmpeg 升级到 8.1、单独需要 Vulkan 头文件，见 ffmpeg.nix 和 fix-finding-libs.patch。
+#   * 头显客户端必须安装同版本的 nightly APK（v21.0.0-dev），20.14.1 客户端连不上。
+# 升级：改 rev/hash，cargoHash 置空后构建一次获取新值，对照 alvr/xtask/patches 更新 ffmpeg.nix。
 {
   lib,
   rustPlatform,
@@ -85,12 +85,12 @@ rustPlatform.buildRustPackage (finalAttrs: {
       vulkanHeaders = vulkan-headers;
     })
     # 上游未合并的 PR #3425（NVIDIA + Quest 上测试）：direct mode 按 SteamVR 的 per-texture
-    # timeline semaphore 取帧、合成所有图层、只在必要时拖住 PostPresent。没有它时 vrcompositor
+    # timeline semaphore 获取帧、合成所有图层、只在必要时阻塞 PostPresent。没有它时 vrcompositor
     # 每帧都 “WaitForAcquire timed out”，画面抖动、延迟高。合并到 rev 无冲突；
     # 二进制的 layer.comp.spv 不在补丁里，见 postPatch。合入上游后删掉。
     ./pr3425-linux-direct-frame-sync.patch
-    # 头显在 SteamVR 激活 HMD 期间就连上时，direct mode 组件尚未创建，编码器一直空闲 → 黑屏，
-    # 只有重连才出画面。组件创建时补发一次编码器重建。
+    # 头显在 SteamVR 激活 HMD 期间就已连接时，direct mode 组件尚未创建，编码器一直空闲 → 黑屏，
+    # 只有重连才出画面。组件创建时再请求一次编码器重建。
     ./fix-first-connection-encoder.patch
   ];
 
@@ -112,7 +112,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
         "-lEGL"
         "-lwayland-client"
         "-lxkbcommon"
-        # master 的 Dashboard 用 wgpu，按裸库名 dlopen libvulkan.so.1；不链进来就只剩 GL 后端，
+        # master 的 Dashboard 用 wgpu，按裸库名 dlopen libvulkan.so.1；不链接进来就只剩 GL 后端，
         # 而 GL 后端在 Wayland 上不可用，Dashboard 启动即退出。
         "-lvulkan"
         "-Wl,--pop-state"

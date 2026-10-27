@@ -5,7 +5,7 @@
 #   * Vulkan 层（64/32 位）只依赖 libc/libm，C++ 运行时静态链接，适合被 Steam 容器
 #     里的游戏加载；Windows 端 dlssnr_helper.exe 和 DXVK 的 vulkan-1.dll 是 PE 文件。
 #     这些放进单独的 runtime derivation，不做任何 fixup（不改 RUNPATH、不 strip）。
-#   * 源码构建要 clang + MinGW 交叉编译 + i686 工具链，收益不大，这里不做。
+#   * 从源码构建需要 clang + MinGW 交叉编译 + i686 工具链，收益不大，这里不做。
 #   * 只有 Qt GUI 需要 patchelf；dlssnr-helper 是 bash 脚本，用 DLSSNR_INSTALL_DIR
 #     指向 runtime，并补齐它调用的命令。
 #   * 共享内存：上游默认放 /tmp/dlssnr-$UID，但 nixpkgs 的 Steam（以及 steam-run）是

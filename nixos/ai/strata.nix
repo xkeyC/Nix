@@ -17,7 +17,7 @@
 #   systemctl --user stop strata
 #
 # 首次使用 / 换模型：先用 `strata launch --save-preset <名字>` 生成 profile（launch-<名字>），
-# 顺带下载 engine、写 run config，然后 `strata launch --stop`，把 local.strata.profile 设成它，
+# 顺带下载 engine、写入 run config，然后 `strata launch --stop`，把 local.strata.profile 设成它，
 # 之后交给 systemd。具体命令见 private/default.nix。
 { config, lib, pkgs, ... }:
 
@@ -56,11 +56,11 @@ in
     systemd.user.services.strata = {
       description = "Strata local LLM server";
       unitConfig.RequiresMountsFor = cfg.dataDir;
-      # engine 检测显卡要用 nvidia-smi。
+      # engine 检测显卡时需要用 nvidia-smi。
       path = [ "/run/current-system/sw" ];
       serviceConfig = {
         ExecStart = start;
-        # SIGTERM 走和 Ctrl+C 相同的退出流程：先让 engine 收尾再退出。
+        # 收到 SIGTERM 时和 Ctrl+C 一样，先让 engine 正常结束再退出。
         TimeoutStopSec = 120;
         Restart = "on-failure";
         RestartSec = 10;

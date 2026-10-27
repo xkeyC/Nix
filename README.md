@@ -1,11 +1,8 @@
 # xkeyc 的 NixOS 配置
 
-一台台式机的完整 NixOS 配置，以 flake 形式管理。
-
-- 硬件：AMD CPU + NVIDIA 显卡，两块 NTFS 数据盘
-- 桌面：KDE Plasma 6（Wayland），中文环境，Fcitx5 + 雾凇拼音
-- 用户环境：Home Manager
-- 软件源：nixpkgs unstable，固定在 `flake.lock` 记录的提交上，不会自己变
+一台台式机的完整 NixOS 配置，以 flake 形式管理。机器是 AMD CPU 加 NVIDIA 显卡，带两块 NTFS 数据盘。
+桌面用 KDE Plasma 6（Wayland）和中文环境，输入法是 Fcitx5 + 雾凇拼音，用户环境由 Home Manager 管理。
+软件源是 nixpkgs unstable，固定在 `flake.lock` 记录的提交上，不会自行变化。
 
 ## 目录结构
 
@@ -17,6 +14,7 @@ nixos/
   default.nix             模块清单：想知道启用了什么，先看这里
   *.nix                   按主题划分的系统模块，见下表
   packages/               自己打包的软件和补丁
+  ai/                     本地 AI 服务（Strata），自己的打包在 ai/packages/
 home/xkeyc.nix            用户 xkeyc 的 Home Manager 配置
 archive/vr/               已存档的 VR 配置（SteamVR + ALVR、Monado、WiVRn、VIVE Hub、PaperTracker），不参与构建
 private.example/          隐私配置的模板（真正的 private/ 不进 git）
@@ -35,7 +33,7 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `nvidia.nix` | NVIDIA 驱动（开源内核模块）、Docker 的 GPU 支持、CUDA 13；修复了 `nvidia-smi` 启动即崩溃的问题 |
 | `desktop.nix` | KDE Plasma 6、登录界面、XWayland、Noto 字体、音频（采样率自适应、主板光纤输出修正、RTKit 实时优先级） |
 | `input-method.nix` | Fcitx5 + RIME 雾凇拼音，作为 Wayland 输入法由 KWin 启动 |
-| `storage.nix` | 挂载 NTFS 数据盘 `/mnt/data` 和 `/mnt/application`（内核 7.1 起的新 ntfs 驱动，出错转只读） |
+| `storage.nix` | 挂载 NTFS 数据盘 `/mnt/data` 和 `/mnt/application`（内核 7.1 起的新 ntfs 驱动，出错时重新挂载为只读） |
 | `power-management.nix` | 关闭睡眠和休眠；空闲 10 分钟只关显示器 |
 | `dns.nix` | DNS：DNSPod、阿里、Cloudflare |
 | `gaming.nix` | Steam、DW-Proton 兼容层、ntsync |
@@ -45,6 +43,7 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `chaos-hdr.nix` | 把 SDR 游戏画面转成 HDR 的 KWin 特效 |
 | `dlss5vklayer.nix` | DLSS 5 Neural Rendering 的游戏插件 |
 | `flclash-tun.nix` | FlClash 代理 TUN 模式需要的特权服务 |
+| `ai/strata.nix` | Strata 本地大模型服务（OpenAI / Anthropic 兼容 API），局域网可访问，需要手动启动 |
 
 ## 自己打包的软件
 
@@ -56,10 +55,11 @@ nixpkgs 里没有，或者 nixpkgs 的版本不能用的软件，在本仓库里
 | [Chaos HDR](https://github.com/chaosfox26/chaos-hdr) | 0.4.3 | 用 NVIDIA TrueHDR 把 SDR 游戏转成 HDR，Alt+Z 打开控制面板 | nixpkgs 没有；上游只提供 Arch 安装脚本 |
 | [DLSS5VKLayer](https://github.com/bmitch87/DLSS5VKLayer) | 0.3.1-2 | 在 Linux 游戏里使用 DLSS 5 Neural Rendering | nixpkgs 没有 |
 | [FlClash](https://github.com/chen08209/FlClash) | 0.9.2 | Clash Meta 代理客户端 | nixpkgs 没有 |
+| [Strata](https://github.com/Niko1221/Strata) | 0.2.7（control 0.1.52） | 在本机运行大模型，提供 OpenAI / Anthropic 兼容 API | nixpkgs 没有；上游只提供安装脚本 |
 | [ALVR](https://github.com/alvr-org/ALVR) | 21.0.0-dev | 把 SteamVR 画面无线串流到 VR 一体机（已存档） | nixpkgs 的 20.14.1 和新版 SteamVR 不兼容，这里用开发版并加了补丁 |
 | [VIVE Hub](https://github.com/ViveRoboticsSoftware/vivehub-linux) | 1.0.3 | VIVE Ultimate Tracker 的配对和建图工具（已存档） | nixpkgs 没有；上游只有闭源预编译包 |
 
-打包文件在 `nixos/packages/`；已存档的 VR 软件在 `archive/vr/packages/`，不参与构建，恢复方法见 `archive/vr/default.nix` 开头。
+打包文件在 `nixos/packages/` 和 `nixos/ai/packages/`；已存档的 VR 软件在 `archive/vr/packages/`，不参与构建，恢复方法见 `archive/vr/default.nix` 开头。
 
 另外有三份外部源码直接从 GitHub 引用（定义在 `flake.nix`，锁定到固定提交）：
 
@@ -80,7 +80,7 @@ sudo nixos-rebuild switch
 `/etc/nixos/flake.nix` 是指向本仓库的软链接，所以不用写路径。也可以显式指定：
 `sudo nixos-rebuild switch --flake ~/Nix#xkeyc-nixos`。
 
-只想先试构建、不切换：
+只想先试着构建、不切换系统：
 
 ```sh
 nixos-rebuild build --flake .#xkeyc-nixos
@@ -92,7 +92,7 @@ nix store diff-closures /run/current-system ./result   # 列出将要变化的�
 
 ### 隐私配置（private/）
 
-不想公开的内容（用户初始密码的哈希、git 邮箱、磁盘 UUID）放在 `private/default.nix`。
+不想公开的内容（用户初始密码的哈希、git 邮箱、磁盘 UUID、Strata 的数据目录和加载的模型）放在 `private/default.nix`。
 这个目录不进 git，构建时通过 `flake.nix` 里的 `private` 输入单独读取。
 
 - **改完 `private/` 一定要执行 `nix flake update private`**，否则构建会报哈希不匹配。
@@ -113,16 +113,17 @@ sudo nixos-rebuild switch
 `flake.nix` 里的外部源码都在 url 中写死了提交号，`nix flake update` 不会让它们变化。
 要升级时，先把 url 里的提交号改成新的，再执行 `nix flake update <名字>`。
 
-- **home-manager**：升级 nixpkgs 时一起升级，否则可能出现选项不匹配的报错。
-- **dsh-nix 和 deepseek-harness**：dsh-nix 更新较慢，`deepseek-harness` 可以单独锁定到
-  上游更新的发布 tag（`dsh-v*`）。这时要同步修改 `home/xkeyc.nix` 里覆盖的 `version`，
-  并把 `outputHash` 改成 `lib.fakeHash` 构建一次，从报错里复制新哈希填回去。新版若改了
-  构建或安装步骤（例如删掉了某个入口），也在那里用 `overrideAttrs` 覆盖。
-- **自己打包的软件**：修改 `version` 或 `rev`，把 `hash`（Rust 软件还有 `cargoHash`）
-  改成 `lib.fakeHash`，构建一次，从报错里复制正确的哈希填回去。
-  - uu-remote-linux：同时用上游新的 `Cargo.lock` 替换 `nixos/packages/uu-remote-linux.Cargo.lock`。
-    如果补丁 `uu-remote-linux-portal-monitor.patch` 打不上，需要按上游新代码重新制作。
-  - ALVR（已存档）：步骤见 `archive/vr/packages/alvr/package.nix` 开头的注释。
+升级 nixpkgs 时要同时升级 home-manager，否则可能出现选项不匹配的报错。
+
+dsh-nix 更新较慢，`deepseek-harness` 可以单独锁定到上游更新的发布 tag（`dsh-v*`）。这时要同步修改
+`home/xkeyc.nix` 里覆盖的 `version`，并把 `outputHash` 改成 `lib.fakeHash` 构建一次，从报错里复制新哈希填回去。
+如果新版修改了构建或安装步骤（例如删掉了某个入口），也在那里用 `overrideAttrs` 覆盖。
+
+自己打包的软件，修改 `version` 或 `rev`，把 `hash`（Rust 软件还有 `cargoHash`）改成 `lib.fakeHash`，
+构建一次，再从报错里复制正确的哈希填回去。uu-remote-linux 还要用上游新的 `Cargo.lock` 替换
+`nixos/packages/uu-remote-linux.Cargo.lock`，如果补丁 `uu-remote-linux-portal-monitor.patch` 打不上，
+需要按上游新代码重新制作。Strata 的哈希可以直接从 release 里的 `strata-feed.json` 获取。
+ALVR（已存档）的步骤见 `archive/vr/packages/alvr/package.nix` 开头的注释。
 
 ### 清理磁盘
 
@@ -130,12 +131,9 @@ sudo nixos-rebuild switch
 sudo nix-collect-garbage --delete-older-than 14d
 ```
 
-清理后，有些东西下次构建要重新下载：
-
-- 外部源码（GitHub 上的提交）：被清理后可能要重新下载，但都不大。
-- dsh 的 npm 依赖：只在编译 dsh 时用到，清理时会被删除。之后只要 dsh 需要重新编译，
-  就要重新下载全部 npm 包（量很大）。为了尽量避免重新编译，`home/xkeyc.nix` 中的
-  `dshSrc` 给源码指定了固定的名字，不要删掉这一行。
+清理后，外部源码（GitHub 上的提交）下次构建时可能要重新下载，但都不大。dsh 的 npm 依赖只在编译 dsh 时用到，
+清理时会被删除，之后只要 dsh 需要重新编译，就要重新下载全部 npm 包，数量很大。为了尽量少重新编译，
+`home/xkeyc.nix` 中的 `dshSrc` 给源码指定了固定的名字，不要删掉这一行。
 
 ## 注意事项
 

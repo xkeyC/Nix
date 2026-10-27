@@ -7,9 +7,9 @@
     # 升级 nixpkgs：`nix flake update nixpkgs`，然后 `sudo nixos-rebuild switch`。
     nixpkgs.url = "github:NixOS/nixpkgs/02c087f3fe673c9e317f206a627cb6b910336dbe";
 
-    # 以下三个原先拷贝在 ./vendor/，现改为锁定到同一提交的线上源码（内容与原 vendor 逐文件一致）。
-    # 都用 flake = false 按源码目录导入，行为与原来的直接 import 相同。
-    # 升级：改 url 里的提交（或去掉提交号后 `nix flake update <名字>`）。
+    # 以下三个原先拷贝在 ./vendor/，现在改为引用同一提交的线上源码（与原来的 vendor 目录逐个文件相同）。
+    # 都用 flake = false 按源码目录导入，行为与原来直接 import 相同。
+    # 升级：修改 url 里的提交号（或者去掉提交号，再执行 `nix flake update <名字>`）。
     home-manager = {
       url = "github:nix-community/home-manager/c216bf5a1f173b0481bd5c8c489ebe5595ecc68c";
       flake = false;

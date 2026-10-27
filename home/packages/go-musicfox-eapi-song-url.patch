@@ -7,7 +7,7 @@
 -	api := "https://music.163.com/weapi/song/enhance/player/url/v1"
 -	code, bodyBytes, err := util.CallWeapi(api, data)
 -	return code, bodyBytes, err
-+	// weapi（网页端）请求 jymaster 最多只给 hires，改走 eapi（客户端）
++	// weapi（网页端）请求 jymaster 最多只给 hires，改用 eapi（客户端）
 +	form := make(map[string]string, len(data))
 +	for k, v := range data {
 +		form[k], _ = v.(string)

@@ -3,7 +3,7 @@
 #   * 由 KWin 通过 kwinrc 的 [Wayland] InputMethod 启动 Fcitx5 的 Wayland
 #     前端（等价于 “系统设置 -> 键盘 -> 虚拟键盘” 中选择
 #     “Fcitx 5 Wayland Launcher (Experimental)”）。
-#   * 不设置 GTK_IM_MODULE / QT_IM_MODULE，原生应用走 text-input-v3 协议；
+#   * 不设置 GTK_IM_MODULE / QT_IM_MODULE，原生应用使用 text-input-v3 协议；
 #     XWayland 应用通过 XMODIFIERS 使用 Fcitx5 的 XIM。
 #   * 词库使用雾凇拼音 (rime-ice)，默认输出简体，并带 emoji。
 { config, lib, pkgs, ... }:
@@ -30,8 +30,8 @@ in
       addons = [ fcitx5-rime-rime-ice ];
       waylandFrontend = true;
 
-      # Fcitx5 默认把左 Shift 设成“临时切换到第一个输入法（keyboard-us）”，按键到不了 RIME，
-      # 而切走时 fcitx5-rime 会把高亮的候选词上屏。清空它，左 Shift 交给雾凇拼音自己处理：
+      # Fcitx5 默认把左 Shift 设成“临时切换到第一个输入法（keyboard-us）”，按键传不到 RIME，
+      # 而且切换出去时 fcitx5-rime 会把高亮的候选词上屏。这里清空这个设置，把左 Shift 交给雾凇拼音自己处理：
       # ascii_composer 里 Shift_L 是 commit_code，已敲的字母直接作为英文上屏并切到英文。
       settings.globalOptions."Hotkey/AltTriggerKeys" = { };
 
@@ -55,7 +55,7 @@ in
     };
   };
 
-  # 让 KWin 在登录时自动拉起 Fcitx5 的 Wayland 前端。
+  # 让 KWin 在登录时自动启动 Fcitx5 的 Wayland 前端。
   # 与 KCM 写入 ~/.config/kwinrc 的内容相同，这里放进系统级 kwinrc，
   # 使第一次登录就能生效（KConfig 会把 /etc/xdg 配置作为默认层读取）。
   environment.etc."xdg/kwinrc".text = ''

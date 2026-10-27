@@ -34,9 +34,9 @@ in
       pnpmDeps = old.pnpmDeps.overrideAttrs {
         outputHash = "sha256-I9pz1GK1uWwp28RBLfGK4SYqIa9bwf0/hW88kWEuJEQ=";
       };
-      # node-addon-require-builtin 靠匹配 node 二进制里的 getter 指令取内部模块，
-      # nixpkgs 编译的 node 对不上（Unsupported/no-getter），启动即崩。wrapper 本来就带
-      # --expose-internals，这时直接 require，与上游 vendor/loader 的做法一致。
+      # node-addon-require-builtin 通过匹配 node 二进制里的 getter 指令获取内部模块，
+      # nixpkgs 编译的 node 匹配不上（Unsupported/no-getter），一启动就崩溃。wrapper 本来就带有
+      # --expose-internals，这种情况下直接 require 即可，与上游 vendor/loader 的做法一致。
       postInstall = (old.postInstall or "") + ''
         rm "$out/bin/dsh-acp-demo"
         substituteInPlace "$out"/node_modules/.pnpm/node-addon-require-builtin@*/node_modules/node-addon-require-builtin/lib/index.js \
@@ -51,9 +51,9 @@ in
 
   home.packages = with pkgs; [
     brave
-    # 命令行网易云音乐，启动命令 musicfox。取播放链接原本走网页端接口（weapi），
-    # 那里请求 jymaster 最多只给 96k 的 Hi-Res；改走客户端接口（eapi），SVIP 才能拿到
-    # 192k 的超清母带。补丁打在 vendor 的 netease-music 库上，vendor 在 configure 时才复制进来。
+    # 命令行网易云音乐，启动命令 musicfox。获取播放链接原本使用网页端接口（weapi），
+    # 用它请求 jymaster 最多只能拿到 96k 的 Hi-Res；改用客户端接口（eapi）后，SVIP 才能拿到
+    # 192k 的超清母带。补丁打在 vendor 目录里的 netease-music 库上，这个目录在 configure 阶段才复制进来。
     (go-musicfox.overrideAttrs (old: {
       postConfigure = (old.postConfigure or "") + ''
         chmod -R u+w vendor/github.com/go-musicfox/netease-music
@@ -63,9 +63,9 @@ in
     mpv # go-musicfox 的播放引擎
   ];
 
-  # go-musicfox：用 mpv 播放（Linux 默认是程序自带的 beep 引擎），音质选超清母带 jymaster
-  # （需要 SVIP，拿不到时服务器会降级）。没写的项用程序内置默认值。
-  # 界面里换主题时 musicfox 会回写这个文件，所以只在文件不存在时写一份，之后可以自由编辑。
+  # go-musicfox：用 mpv 播放（Linux 默认是程序自带的 beep 引擎），音质选择超清母带 jymaster
+  # （需要 SVIP，否则服务器会降低音质）。没有写的配置项使用程序内置的默认值。
+  # 在界面里切换主题时 musicfox 会改写这个文件，所以只在文件不存在时写入一份，之后可以自由编辑。
   home.activation.configureMusicfox = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     musicfoxConfig="''${XDG_CONFIG_HOME:-$HOME/.config}/go-musicfox/config.toml"
     if [ ! -e "$musicfoxConfig" ]; then
@@ -93,18 +93,17 @@ in
     '') [ "AC" "Battery" "LowBattery" ]
   );
 
-  # Baloo 默认只索引 ~，这里再显式排除两块 NTFS 数据盘：大批文件的元数据扫描没必要，
-  # 也少一个常驻读写 NTFS 的后台进程。
+  # Baloo 默认只索引 ~，这里再显式排除两块 NTFS 数据盘：扫描大量文件的元数据没有必要，
+  # 也能少一个长期读写 NTFS 的后台进程。
   home.activation.configureBaloo = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     run ${pkgs.kdePackages.kconfig}/bin/kwriteconfig6 --file baloofilerc \
       --group General --key "exclude folders" --type path "/mnt/data/,/mnt/application/"
   '';
 
-  # 窗口回到上次所在的显示器。主显示器走 HDMI 2.1，开机时比右边的竖屏（DP）晚几秒接上，
-  # 登录时恢复/自启的窗口会全开在竖屏上。KWin QML 脚本：
-  #   - 记录：两块屏都在线时，窗口换到哪块屏就记下“程序 → 显示器”（~/.local/state/kwin-window-screens.ini）
-  #   - 还原：只在登录后 2 分钟内，把新开的窗口送回它上次的显示器；目标屏还没接上就等它出现
-  # 2 分钟后不再干预，KWin 照常摆放。
+  # 窗口回到上次所在的显示器。主显示器通过 HDMI 2.1 连接，开机时比右边的竖屏（DP）晚几秒才接通，
+  # 登录时恢复或自启动的窗口会全部打开在竖屏上。这个 KWin QML 脚本在两块屏都在线时，记录每个程序的窗口
+  # 移到了哪块显示器（~/.local/state/kwin-window-screens.ini）；登录后 2 分钟内，把新打开的窗口送回它上次
+  # 所在的显示器，目标屏还没接通就等它出现。2 分钟后不再干预，由 KWin 正常摆放。
   xdg.dataFile."kwin/scripts/window-screen-memory/metadata.json".text = builtins.toJSON {
     KPlugin = {
       Id = "window-screen-memory";
@@ -141,7 +140,7 @@ in
         function relevant(w) {
             return w.normalWindow && w.moveableAcrossScreens && w.resourceClass;
         }
-        // 两块屏都在线才记录：登录时只有竖屏的那几秒，窗口在哪都不算数
+        // 两块屏都在线时才记录：登录时只有竖屏在线的那几秒里，窗口的位置不作数
         function allScreensUp() {
             return Workspace.screens.length >= 2;
         }
@@ -153,10 +152,10 @@ in
             store.screens = JSON.stringify(map);
             store.sync();
         }
-        // 送回上次的显示器；目标屏还没接上返回 false
+        // 送回上次的显示器；目标屏还没接通时返回 false
         function restore(w) {
             const target = load()[w.resourceClass];
-            if (!target) { remember(w); return true; } // 没记录过：记下现在的位置
+            if (!target) { remember(w); return true; } // 没有记录：记下当前的位置
             const out = Workspace.screens.find(o => o.name === target);
             if (!out) return false;
             if (w.output !== out) Workspace.sendClientToScreen(w, out);
@@ -186,7 +185,7 @@ in
       --group Plugins --key window-screen-memoryEnabled --type bool true
   '';
 
-  # DeepSeek Harness web desktop shell; launch with: dsh --profile web
+  # DeepSeek Harness 的 Web 桌面界面，启动命令：dsh --profile web
   programs.dsh = {
     enable = true;
     profiles.web.plugins = [
@@ -195,7 +194,7 @@ in
     ];
   };
 
-  # User-level npm/pnpm registry; this does not alter Nix build sandboxes.
+  # 用户级的 npm/pnpm 镜像源，不影响 Nix 构建沙箱。
   home.file.".npmrc".text = ''
     registry=https://registry.npmmirror.com/
   '';

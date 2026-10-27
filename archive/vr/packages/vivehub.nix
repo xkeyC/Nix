@@ -1,11 +1,11 @@
 # VIVE Hub for Linux（Beta）：VIVE Ultimate Tracker 的配对、建图和姿态 SDK。
 #
 # 上游 https://github.com/ViveRoboticsSoftware/vivehub-linux 只发布预编译包（闭源，VIVE EULA）。
-#   * vivehub（ImGui/GLFW 界面）和 tracker_server（dongle 守护进程，由界面拉起）按
-#     /proc/self/exe 的目录找同级文件，资源按当前目录找，所以必须 cd 进安装目录再启动；
+#   * vivehub（ImGui/GLFW 界面）和 tracker_server（dongle 守护进程，由界面启动）按
+#     /proc/self/exe 的目录找同级文件，资源按当前目录查找，所以必须 cd 进安装目录再启动；
 #     随包的 libglfw / libhidapi-hidraw 通过 LD_LIBRARY_PATH 加载（同上游 run-vivehub.sh）。
 #   * “Start setup”打开的建图向导是 Unity 播放器，运行时会 dlopen 一大串 X11/Wayland/
-#     GL/Vulkan/音频库。逐个 patchelf 容易漏，这里把原样文件放进 store，用 FHS 环境运行。
+#     GL/Vulkan/音频库。逐个 patchelf 容易遗漏，这里把原样文件放进 store，用 FHS 环境运行。
 #   * 界面的 imgui.ini 写在安装目录（只读），窗口布局不会保存，不影响功能。
 #   * 日志、trackers.json 在 ~/.local/share/HTC/VIVEUltimateTracker/。
 { lib

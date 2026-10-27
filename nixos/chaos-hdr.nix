@@ -26,6 +26,8 @@ in
     wantedBy = [ "graphical-session.target" ];
     partOf = [ "graphical-session.target" ];
     after = [ "graphical-session.target" "plasma-kwin_wayland.service" ];
+    # KWin 用核显渲染时（desktop-gpu.nix）不加载：特效依赖 NVIDIA NGX。
+    unitConfig.ConditionPathExists = "!%h/.config/kwin-render-igpu";
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;

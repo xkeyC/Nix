@@ -18,6 +18,7 @@
     ./flclash-tun.nix  # FlClash TUN 模式的特权 Helper
     ./gaming.nix       # Steam 与 DW-Proton 兼容工具
     ./chaos-hdr.nix    # NVIDIA TrueHDR KWin 特效（给 SDR 游戏窗口做 HDR）
+    ./desktop-gpu.nix  # 桌面临时改用核显渲染（desktop-gpu igpu|nvidia，重新登录生效）
     ./dlss5vklayer.nix # DLSS 5 Neural Rendering Vulkan 层 + Wine helper
     ./uu-remote.nix    # UU 远程 Linux 被控端（非官方 uu-remote-linux）
     ./home-manager.nix # 用户级软件包（QQ / FlClash）与 Home Manager 设置

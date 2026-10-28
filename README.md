@@ -44,6 +44,7 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `chaos-hdr.nix` | 把 SDR 游戏画面转成 HDR 的 KWin 特效 |
 | `dlss5vklayer.nix` | DLSS 5 Neural Rendering 的游戏插件 |
 | `desktop-gpu.nix` | 桌面临时改用核显渲染，显示器仍接在 4090 上（`desktop-gpu igpu`，重新登录生效） |
+| `browser-hdr-video.nix` | Brave 播放 HDR 视频：给 KWin 打补丁，不再截掉 Chromium 的 HDR 高光；Brave 开 NVIDIA VA-API 硬解（B 站 HEVC / HDR） |
 | `flclash-tun.nix` | FlClash 代理 TUN 模式需要的特权服务 |
 | `ai/strata.nix` | Strata 本地大模型服务（OpenAI / Anthropic 兼容 API），局域网可访问，需要手动启动 |
 

@@ -50,7 +50,7 @@ in
   home.stateVersion = "26.05";
 
   home.packages = with pkgs; [
-    brave
+    # Brave 在 nixos/browser-hdr-video.nix（带 VA-API 硬解参数）
     # 命令行网易云音乐，启动命令 musicfox。获取播放链接原本使用网页端接口（weapi），
     # 用它请求 jymaster 最多只能拿到 96k 的 Hi-Res；改用客户端接口（eapi）后，SVIP 才能拿到
     # 192k 的超清母带。补丁打在 vendor 目录里的 netease-music 库上，这个目录在 configure 阶段才复制进来。

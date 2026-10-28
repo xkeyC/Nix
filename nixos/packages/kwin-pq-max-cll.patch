@@ -1,0 +1,20 @@
+--- a/src/wayland/colormanagement_v1.cpp
++++ b/src/wayland/colormanagement_v1.cpp
+@@ -301,6 +301,17 @@
+ 
+     std::optional<double> maxFrameAverageLuminance = m_maxFall ? m_maxFall : m_maxMasteringLuminance;
+     std::optional<double> maxHdrLuminance = m_maxCll ? m_maxCll : m_maxMasteringLuminance;
++    // Chromium describes its whole surface as PQ but sets max_cll and max_fall to the reference white,
++    // also while it shows HDR video in it, so taking them at face value clips every highlight. PQ content
++    // that claims to be no brighter than reference white is not described correctly: ignore that and use
++    // the mastering luminance or the luminance range from set_luminances instead.
++    if (m_transferFunctionType == TransferFunction::PerceptualQuantizer && m_maxCll && *m_maxCll <= referenceLuminance) {
++        const std::optional<double> declaredMax = m_transferFunctionLuminances ? std::optional<double>(m_transferFunctionLuminances->max) : std::nullopt;
++        maxHdrLuminance = m_maxMasteringLuminance ? m_maxMasteringLuminance : declaredMax;
++        if (m_maxFall && *m_maxFall <= referenceLuminance) {
++            maxFrameAverageLuminance = m_maxMasteringLuminance;
++        }
++    }
+     // some applications provide truly nonsensical luminance values, like 10 million nits.
+     // this is just a basic sanity check to not make use of that and instead assume HGIG values
+     // which are fine for most HDR games and videos

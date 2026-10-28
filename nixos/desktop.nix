@@ -40,22 +40,42 @@
   # 显示器的 VRR 用「自动」（在系统设置里改，KDE 自己存在 kwinoutputconfig.json）：只有全屏窗口才开 VRR，
   # 桌面固定刷新率，和 Windows 的做法一样。「始终」在 4090 + 这两块屏上会让 OLED 闪烁，桌面静止或刷新率
   # 大幅跳动时显示器还会轮流黑屏几秒，内核和 KWin 日志里都没有记录。
-  # Spectacle 的区域截图是一个全屏窗口，「自动」模式下会让 VRR 打开又关上，每次切换都黑一下；
-  # 这里用窗口规则让它不触发 VRR。KWin 会把 kwinrulesrc 里新增的规则组自动加入规则列表，系统设置里也能看到和修改。
+  # 「自动」下 VRR 打开没问题，关闭时两块屏都会黑一下（退出全屏、全屏时去操作另一块屏），是 NVIDIA 驱动的问题。
+  # 所以只给游戏开 VRR（白名单），减少开关次数；网页全屏、mpv、Spectacle 的区域截图都不再触发。
+  #
+  # 用 KWin 窗口规则实现：同一个窗口匹配多条规则时，按 Order 的顺序第一条设置了「自适应同步」的规则生效。
+  #   * vrr-allow-games：Steam 里的游戏（Proton 把窗口类别设成 steam_app_<ID>，非 Steam 游戏加进 Steam 也一样）
+  #     和不经过 Steam 运行的 Wine / Proton 程序（窗口类别是 exe 文件名）；「不影响」= 保持默认，全屏时才开 VRR。
+  #   * vrr-deny-others：匹配其余所有窗口，强制不开 VRR，排在最后。
+  # 其他游戏的窗口类别可在「系统设置 → 窗口规则 → 检测窗口属性」里查看，加到 wmclass 的正则里。
+  # 每次激活都会重排 Order：白名单在最前、兜底规则在最后，自己在系统设置里加的规则保持原有顺序排在中间。
   home-manager.sharedModules = [
     ({ lib, ... }: {
-      home.activation.spectacleNoVrr = lib.hm.dag.entryAfter [ "writeBoundary" ] (
-        lib.concatStringsSep "\n" (lib.mapAttrsToList (key: value: ''
-          run ${pkgs.kdePackages.kconfig}/bin/kwriteconfig6 --file kwinrulesrc --group spectacle-no-vrr --key ${key} ${lib.escapeShellArg value}
-        '') {
-          Description = "Spectacle 不触发 VRR";
-          wmclass = "org.kde.spectacle";
-          wmclassmatch = "1"; # 完全匹配
-          wmclasscomplete = "false";
-          adaptivesync = "false";
-          adaptivesyncrule = "2"; # 强制
-        })
-      );
+      home.activation.vrrWhitelist = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        kwrite=${pkgs.kdePackages.kconfig}/bin/kwriteconfig6
+        kread=${pkgs.kdePackages.kconfig}/bin/kreadconfig6
+        setRule() {
+          local group=$1
+          shift
+          while [ $# -gt 0 ]; do
+            run $kwrite --file kwinrulesrc --group "$group" --key "$1" "$2"
+            shift 2
+          done
+        }
+        # wmclassmatch：0 不重要 / 3 正则；adaptivesyncrule：1 不影响 / 2 强制
+        setRule vrr-allow-games Description "游戏：全屏时开 VRR" wmclass '^steam_app_|\.exe$' \
+          wmclassmatch 3 wmclasscomplete false adaptivesyncrule 1
+        setRule vrr-deny-others Description "其他窗口：不开 VRR" wmclassmatch 0 adaptivesync false adaptivesyncrule 2
+        # 旧版只给 Spectacle 关 VRR 的规则（黑名单）
+        for key in Description wmclass wmclassmatch wmclasscomplete adaptivesync adaptivesyncrule; do
+          run $kwrite --file kwinrulesrc --group spectacle-no-vrr --key $key --delete
+        done
+        order=$($kread --file kwinrulesrc --group General --key Order)
+        rest=$(printf '%s' "$order" | ${pkgs.coreutils}/bin/tr ',' '\n' \
+          | ${pkgs.gnugrep}/bin/grep -vxE 'vrr-allow-games|vrr-deny-others|spectacle-no-vrr' \
+          | ${pkgs.coreutils}/bin/paste -sd, - || true)
+        run $kwrite --file kwinrulesrc --group General --key Order "vrr-allow-games''${rest:+,$rest},vrr-deny-others"
+      '';
     })
   ];
 }

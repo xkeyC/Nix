@@ -61,6 +61,7 @@ in
       '';
     }))
     mpv # go-musicfox 的播放引擎
+    telegram-desktop
   ];
 
   # go-musicfox：用 mpv 播放（Linux 默认是程序自带的 beep 引擎），音质选择超清母带 jymaster

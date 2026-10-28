@@ -79,6 +79,17 @@ in
     fi
   '';
 
+  # 写了 DBusActivatable=true 的程序（如 Telegram），Plasma 通过会话总线启动它们，但 dbus-broker 只在登录时
+  # 扫描一次服务目录，switch 后新装的程序会报 "The name is not activatable"。激活后让会话总线重新加载配置；
+  # 没有登录（总线不存在）时跳过。从 NixOS 模块运行时没有 XDG_RUNTIME_DIR，自己补上。
+  home.activation.reloadDbusSession = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    bus="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/bus"
+    if [ -S "$bus" ]; then
+      run ${pkgs.systemd}/bin/busctl --address="unix:path=$bus" call \
+        org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus ReloadConfig || true
+    fi
+  '';
+
   programs.kitty.enable = true;
 
   # Plasma 6：所有电源模式均不自动睡眠，空闲 10 分钟关闭显示器。

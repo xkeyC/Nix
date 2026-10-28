@@ -35,11 +35,11 @@
 }:
 
 let
-  version = "0.3.1-2";
+  version = "0.3.2-1";
 
   src = fetchurl {
     url = "https://github.com/bmitch87/DLSS5VKLayer/releases/download/${version}/dlssnr-${version}-linux-x86_64.tar.gz";
-    sha256 = "43fd001720a3e15704c1bb8ea03c768b406e058c8eb2859ab0ebc8b3cd48f955";
+    hash = "sha256-Kl35Rv9wVMLGzfr/rVxoM7uq9ITJmRr/2Xp6vwhAT/0=";
   };
 
   # 层、helper.exe、vulkan-1.dll、静态 CLI 工具和层清单；原样保留。
@@ -76,8 +76,10 @@ stdenv.mkDerivation {
     patchelf --set-interpreter "$(cat $NIX_CC/nix-support/dynamic-linker)" \
       --set-rpath ${lib.makeLibraryPath [ kdePackages.qtbase ]} $out/libexec/dlssnr/dlssnr-gui
     # Qt 的二进制包装器不支持 --run，这里用 shell 包装器带上 Qt 插件路径。
+    install -Dm644 -t $out/share/dlssnr/translations share/dlssnr/translations/*.qm
     makeShellWrapper $out/libexec/dlssnr/dlssnr-gui $out/bin/dlssnr-gui \
-      "''${qtWrapperArgs[@]}" --run "$shmDefault"
+      "''${qtWrapperArgs[@]}" --run "$shmDefault" \
+      --set-default DLSSNR_TRANSLATIONS $out/share/dlssnr/translations
 
     install -Dm755 bin/dlssnr-helper $out/libexec/dlssnr/dlssnr-helper
     substituteInPlace $out/libexec/dlssnr/dlssnr-helper \

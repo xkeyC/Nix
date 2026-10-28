@@ -56,7 +56,7 @@ nixpkgs 里没有，或者 nixpkgs 的版本不能用的软件，在本仓库里
 |---|---|---|---|
 | [uu-remote-linux](https://github.com/VallierDev/uu-remote-linux) | 0.2.32 | 用官方 UU 远程客户端控制这台电脑（非官方被控端），附带一个 Linux 控制端 | nixpkgs 没有。另加了一个补丁，让 KDE 下只共享一块显示器 |
 | [Chaos HDR](https://github.com/chaosfox26/chaos-hdr) | 0.4.3 | 用 NVIDIA TrueHDR 把 SDR 游戏转成 HDR，Alt+Z 打开控制面板 | nixpkgs 没有；上游只提供 Arch 安装脚本 |
-| [DLSS5VKLayer](https://github.com/bmitch87/DLSS5VKLayer) | 0.3.1-2 | 在 Linux 游戏里使用 DLSS 5 Neural Rendering | nixpkgs 没有 |
+| [DLSS5VKLayer](https://github.com/bmitch87/DLSS5VKLayer) | 0.3.2-1 | 在 Linux 游戏里使用 DLSS 5 Neural Rendering | nixpkgs 没有 |
 | [FlClash](https://github.com/chen08209/FlClash) | 0.9.2 | Clash Meta 代理客户端 | nixpkgs 没有 |
 | [Strata](https://github.com/Niko1221/Strata) | 0.2.7（control 0.1.52） | 在本机运行大模型，提供 OpenAI / Anthropic 兼容 API | nixpkgs 没有；上游只提供安装脚本 |
 | [ALVR](https://github.com/alvr-org/ALVR) | 21.0.0-dev | 把 SteamVR 画面无线串流到 VR 一体机（已存档） | nixpkgs 的 20.14.1 和新版 SteamVR 不兼容，这里用开发版并加了补丁 |

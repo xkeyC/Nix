@@ -1,6 +1,28 @@
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 
+let
+  dwproton = pkgs.writeShellScriptBin "dwproton" ''
+    if [ "$#" -eq 0 ] || [ "$1" = "--help" ]; then
+      echo '用法: dwproton [run|runinprefix|waitforexitandrun] <程序.exe> [参数...]'
+      echo '      dwproton <程序.exe> [参数...]'
+      echo '默认兼容目录: ~/.local/share/dwproton/default；可通过 STEAM_COMPAT_DATA_PATH 覆盖。'
+      exit 0
+    fi
+
+    export STEAM_COMPAT_CLIENT_INSTALL_PATH="''${STEAM_COMPAT_CLIENT_INSTALL_PATH:-$HOME/.local/share/Steam}"
+    export STEAM_COMPAT_DATA_PATH="''${STEAM_COMPAT_DATA_PATH:-''${XDG_DATA_HOME:-$HOME/.local/share}/dwproton/default}"
+    mkdir -p "$STEAM_COMPAT_DATA_PATH"
+
+    case "$1" in
+      run|runinprefix|waitforexitandrun|getcompatpath|getnativepath|destroyprefix) ;;
+      *) set -- run "$@" ;;
+    esac
+    exec ${config.programs.steam.package.run}/bin/steam-run \
+      ${pkgs.dwproton-bin.steamcompattool}/proton "$@"
+  '';
+in
 {
+  environment.systemPackages = [ dwproton ];
   # Steam 模块同时启用 32 位图形库，供 Steam 和 Windows 游戏使用。
   programs.steam = {
     enable = true;

@@ -36,4 +36,26 @@
 
   # PipeWire 通过 RTKit 把音频线程提升到实时优先级；没有 RTKit 时只有普通优先级，系统繁忙时容易断流。
   security.rtkit.enable = true;
+
+  # 显示器的 VRR 用「自动」（在系统设置里改，KDE 自己存在 kwinoutputconfig.json）：只有全屏窗口才开 VRR，
+  # 桌面固定刷新率，和 Windows 的做法一样。「始终」在 4090 + 这两块屏上会让 OLED 闪烁，桌面静止或刷新率
+  # 大幅跳动时显示器还会轮流黑屏几秒，内核和 KWin 日志里都没有记录。
+  # Spectacle 的区域截图是一个全屏窗口，「自动」模式下会让 VRR 打开又关上，每次切换都黑一下；
+  # 这里用窗口规则让它不触发 VRR。KWin 会把 kwinrulesrc 里新增的规则组自动加入规则列表，系统设置里也能看到和修改。
+  home-manager.sharedModules = [
+    ({ lib, ... }: {
+      home.activation.spectacleNoVrr = lib.hm.dag.entryAfter [ "writeBoundary" ] (
+        lib.concatStringsSep "\n" (lib.mapAttrsToList (key: value: ''
+          run ${pkgs.kdePackages.kconfig}/bin/kwriteconfig6 --file kwinrulesrc --group spectacle-no-vrr --key ${key} ${lib.escapeShellArg value}
+        '') {
+          Description = "Spectacle 不触发 VRR";
+          wmclass = "org.kde.spectacle";
+          wmclassmatch = "1"; # 完全匹配
+          wmclasscomplete = "false";
+          adaptivesync = "false";
+          adaptivesyncrule = "2"; # 强制
+        })
+      );
+    })
+  ];
 }

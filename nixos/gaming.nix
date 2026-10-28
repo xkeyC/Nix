@@ -20,9 +20,13 @@ let
     exec ${config.programs.steam.package.run}/bin/steam-run \
       ${pkgs.dwproton-bin.steamcompattool}/proton "$@"
   '';
+  dwprotonExplorer = pkgs.runCommand "dwproton-explorer" { } ''
+    mkdir -p "$out/bin"
+    ln -s ${pkgs.dwproton-bin.steamcompattool}/files/lib/wine/x86_64-windows/explorer.exe "$out/bin/dwproton-explorer.exe"
+  '';
 in
 {
-  environment.systemPackages = [ dwproton ];
+  environment.systemPackages = [ dwproton dwprotonExplorer ];
   # Steam 模块同时启用 32 位图形库，供 Steam 和 Windows 游戏使用。
   programs.steam = {
     enable = true;

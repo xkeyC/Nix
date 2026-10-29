@@ -32,7 +32,7 @@ let
       "VaapiOnNvidiaGPUs"
       "VaapiIgnoreDriverChecks"
       "PlatformHEVCDecoderSupport"
-    ];
+    ] + " --ignore-gpu-blocklist";
   };
 in
 {

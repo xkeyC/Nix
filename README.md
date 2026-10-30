@@ -32,6 +32,7 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `shell.nix` | 登录 shell 用 zsh + oh-my-zsh（自动建议、语法高亮）；Claude Code 通过 `CLAUDE_CODE_SHELL` 仍用 bash |
 | `ssh.nix` | SSH 服务；root 只能用密钥登录 |
 | `nvidia.nix` | NVIDIA 驱动（开源内核模块）、Docker 的 GPU 支持、CUDA 13；修复了 `nvidia-smi` 启动即崩溃的问题 |
+| `gpu-unlock.nix` | RTX 4090 实验性 Tensor Core 解锁，默认启用；提供不解锁启动项 |
 | `desktop.nix` | KDE Plasma 6、登录界面、XWayland、Noto 字体、音频（采样率自适应、主板光纤输出修正、RTKit 实时优先级） |
 | `input-method.nix` | Fcitx5 + RIME 雾凇拼音，作为 Wayland 输入法由 KWin 启动 |
 | `storage.nix` | 挂载 NTFS 数据盘 `/mnt/data` 和 `/mnt/application`（内核 7.1 起的新 ntfs 驱动，出错时重新挂载为只读） |
@@ -47,6 +48,25 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `browser-hdr-video.nix` | Brave 播放 HDR 视频：给 KWin 打补丁，不再截掉 Chromium 的 HDR 高光；Brave 开 NVIDIA VA-API 硬解（B 站 HEVC / HDR） |
 | `flclash-tun.nix` | FlClash 代理 TUN 模式需要的特权服务 |
 | `ai/strata.nix` | Strata 本地大模型服务（OpenAI / Anthropic 兼容 API），局域网可访问，需要手动启动 |
+
+## RTX 4090 解锁启动项
+
+`nixos/gpu-unlock.nix` 固定了 gpu-unlock-ada 源码及固件输入，使用当前内核编译模块，并在 initrd 的 NVIDIA 驱动加载前运行。默认启动项启用解锁，`no-gpu-unlock` 启动项不启用。构建并安装启动项：
+
+```bash
+sudo nixos-rebuild boot --flake /home/xkeyc/Nix#xkeyc-nixos
+```
+
+首次测试应完整关机后开机，默认启动项会尝试解锁。要恢复原始状态，完整关机后开机并在 systemd-boot 菜单选择 `no-gpu-unlock` 启动项。屏幕可能在解锁和驱动交接时短暂变黑；如果异常，选择 `no-gpu-unlock` 启动项。
+
+启动后检查：
+
+```bash
+journalctl -k -b | grep -i gpu_unlock
+nvidia-smi
+```
+
+目标 `0000:01:00.0` 应出现 `gpu_unlock: unlocked`；还应使用同一工作负载对比解锁前后性能和结果。若日志提示固件未停止且保留 DMA 缓冲区，关机后再试，不要强制卸载模块。此路径为实验性，内核更新后需要重新构建和验证。
 
 ## 自己打包的软件
 

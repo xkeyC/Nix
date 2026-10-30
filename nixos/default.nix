@@ -11,6 +11,7 @@
     ./shell.nix        # 登录 shell 用 zsh + oh-my-zsh，Claude Code 仍用 bash
     ./ssh.nix          # OpenSSH
     ./nvidia.nix       # NVIDIA 驱动、Docker + 容器工具链、CUDA
+    ./gpu-unlock.nix   # 默认启用 RTX 4090 解锁；提供不解锁启动项
     ./desktop.nix      # KDE Plasma 6 + 字体
     ./storage.nix      # NTFS 数据盘
     ./input-method.nix # Fcitx5 + RIME(雾凇拼音)，以及 KWin 启动输入法

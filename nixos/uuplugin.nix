@@ -1,8 +1,9 @@
 # UU 主机加速（Steam Deck 插件）：只加速 Steam，其他程序不受影响。
 #
 # UU 只运行在网络命名空间 uu 里，用哪个快捷方式决定 Steam 进不进这个空间：
-#   * Steam（UU 加速）：Steam 及其子进程在 uu 空间，由 UU 加速。UU 随它启动和退出。
+#   * Steam（UU 加速）：Steam 及其子进程在 uu 空间，由 UU 加速。
 #   * Steam（原来的快捷方式）：Steam 在主机网络里，和 UU 无关。
+# UU 开机自启，一直运行，App 里随时能看到设备。临时停止：systemctl stop uuplugin
 # 这个空间用 macvlan 直接接到 enp6s0，有自己的 MAC 和局域网 IP，不经过主机的路由表和防火墙，
 # 所以 FlClash TUN 管不到它（Steam 商店也不走代理）。主机和这个空间之间不能互相访问。
 #
@@ -102,15 +103,9 @@ let
       }
 
       want="net:[$(stat -L -c %i /run/netns/uu 2>/dev/null || true)]"
-      running=
       for pid in $(pgrep -x -u "$UID" steam || true); do
         [ "$(readlink "/proc/$pid/ns/net")" = "$want" ] || fail "Steam 正在 UU 空间外运行，请先退出 Steam。"
-        running=1
       done
-      # steam:// 链接之类，只是转交给已运行的实例，不影响 UU。
-      if [ -n "$running" ]; then
-        exec ${netnsRun} steam "$@"
-      fi
 
       systemctl start uuplugin.service || fail "无法启动 uuplugin.service，见 journalctl -u uuplugin。"
       # 等 DHCP 拿到地址，否则 Steam 一启动就进入离线状态。
@@ -119,11 +114,7 @@ let
         sleep 1
       done
 
-      # 不用 exec：Steam 退出后要停掉 UU。
-      status=0
-      ${netnsRun} steam "$@" || status=$?
-      systemctl stop uuplugin.service || true
-      exit "$status"
+      exec ${netnsRun} steam "$@"
     '';
   };
 in
@@ -143,7 +134,9 @@ in
   systemd.services.uu-netns = {
     description = "Network namespace shared by UU and Steam";
     bindsTo = [ "sys-subsystem-net-devices-${lan}.device" ];
-    after = [ "sys-subsystem-net-devices-${lan}.device" ];
+    # 开机时等 NetworkManager 启用 ${lan}，再在它上面建 macvlan。
+    wants = [ "network-online.target" ];
+    after = [ "sys-subsystem-net-devices-${lan}.device" "network-online.target" ];
     path = with pkgs; [ iproute2 iptables procps ];
     # 重建命名空间后，运行中的 Steam 还留在旧空间里，和 UU 分开了。
     restartIfChanged = false;
@@ -169,6 +162,7 @@ in
 
   systemd.services.uuplugin = {
     description = "UU accelerator in the uu network namespace";
+    wantedBy = [ "multi-user.target" ];
     bindsTo = [ "uu-netns.service" ];
     wants = [ "uu-netns-dhcp.service" ];
     after = [ "uu-netns.service" "uu-netns-dhcp.service" ];
@@ -194,7 +188,7 @@ in
     };
   };
 
-  # 快捷方式启动和停止 UU 时不用输入密码。
+  # 启动和停止 UU 时不用输入密码。
   security.polkit.extraConfig = ''
     polkit.addRule(function (action, subject) {
       if (action.id == "org.freedesktop.systemd1.manage-units" && subject.user == "xkeyc" &&

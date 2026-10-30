@@ -42,6 +42,7 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `dev-toolchains.nix` | 开发工具：gh、Rust、Python、Node、Flutter、Go、C/C++、.NET；git 设置；nix-ld（让下载来的通用 Linux 程序能直接运行） |
 | `home-manager.nix` | 用户软件：QQ（`/mnt/data` 没挂载时不启动）、FlClash、Claude Code、Codex |
 | `uu-remote.nix` | UU 远程被控端，以及开机自动登录 |
+| `uuplugin.nix` | UU 主机加速，运行在独立的网络命名空间。「Steam（UU 加速）」快捷方式把 Steam 放进这个空间，只加速 Steam；原来的 Steam 快捷方式不受影响 |
 | `chaos-hdr.nix` | 把 SDR 游戏画面转成 HDR 的 KWin 特效（RTX HDR，着色器引擎作备用） |
 | `dlss5vklayer.nix` | DLSS 5 Neural Rendering 的游戏插件 |
 | `desktop-gpu.nix` | 桌面临时改用核显渲染，显示器仍接在 4090 上（`desktop-gpu igpu`，重新登录生效） |
@@ -75,6 +76,7 @@ nixpkgs 里没有，或者 nixpkgs 的版本不能用的软件，在本仓库里
 | 软件 | 版本 | 用途 | 为什么自己打包 |
 |---|---|---|---|
 | [uu-remote-linux](https://github.com/VallierDev/uu-remote-linux) | 0.2.32 | 用官方 UU 远程客户端控制这台电脑（非官方被控端），附带一个 Linux 控制端 | nixpkgs 没有。另加了一个补丁，让 KDE 下只共享一块显示器 |
+| [uuplugin](https://uu.163.com/) | 14.11.2 | UU 主机加速的 Steam Deck 插件 | nixpkgs 没有；上游只提供闭源压缩包 |
 | [Chaos HDR](https://github.com/xkeyC/chaos-hdr) | 0.5.0（fork） | 用 NVIDIA TrueHDR 把 SDR 游戏转成 HDR，失败时换用着色器引擎，Alt+Z 打开控制面板 | nixpkgs 没有；上游只提供 Arch 安装脚本。fork 增加了备用引擎和更多画面选项 |
 | [DLSS5VKLayer](https://github.com/bmitch87/DLSS5VKLayer) | 0.3.2-1 | 在 Linux 游戏里使用 DLSS 5 Neural Rendering | nixpkgs 没有 |
 | [FlClash](https://github.com/chen08209/FlClash) | 0.9.2 | Clash Meta 代理客户端 | nixpkgs 没有 |

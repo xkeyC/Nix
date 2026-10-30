@@ -19,6 +19,7 @@
     ./power-management.nix # 禁用睡眠/休眠，保留 KDE 自动关屏
     ./flclash-tun.nix  # FlClash TUN 模式的特权 Helper
     ./gaming.nix       # Steam 与 DW-Proton 兼容工具
+    ./uuplugin.nix     # UU 主机加速（独立网络命名空间，「Steam（UU 加速）」快捷方式）
     ./chaos-hdr.nix    # NVIDIA TrueHDR KWin 特效（给 SDR 游戏窗口做 HDR）
     ./desktop-gpu.nix  # 桌面临时改用核显渲染（desktop-gpu igpu|nvidia，重新登录生效）
     ./browser-hdr-video.nix # Brave 的 HDR 视频：KWin 补丁（不截高光）+ NVIDIA VA-API 硬解（B 站 HEVC）

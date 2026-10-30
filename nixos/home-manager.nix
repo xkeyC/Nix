@@ -15,7 +15,15 @@ let
   # QQ 的聊天记录在 /mnt/data 上（~/.config/QQ 里的 nt_qq_*、global 是指过去的符号链接）。
   # 如果在盘没有挂载时启动，QQ 会把目录创建在根分区的空挂载点里，挂载后这些目录被覆盖，聊天记录看起来就“丢失”了。
   # 修复包使用系统的 nixpkgs 和 QQ，避免引入另一套运行时依赖。
-  qqFix = (inputs.linuxqq-wayland-fix.overlays.default pkgs pkgs).linuxqq-wayland-fix;
+  qqFix = (inputs.linuxqq-wayland-fix.overlays.default pkgs pkgs).linuxqq-wayland-fix.overrideAttrs (old: {
+    # PR #60：KDE 缩放显示器截图使用原生分辨率，合并上游后可移除。
+    patches = (old.patches or [ ]) ++ [
+      (pkgs.fetchurl {
+        url = "https://github.com/SHORiN-KiWATA/linuxqq-wayland-fix/commit/88abcef7729bcdb09fe3ad7cfd70daa22425e50a.patch";
+        sha256 = "0zhnp7cw31iixwmrz05pca01zja2h8lcjwk980ivqs25zc6br4jb";
+      })
+    ];
+  });
   # 命令和菜单项都先检查挂载：登录时会话恢复启动 QQ 可能比挂载更早，最多先等 10 秒。
   qq = pkgs.symlinkJoin {
     name = "qq-${pkgs.qq.version}";

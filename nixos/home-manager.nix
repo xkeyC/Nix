@@ -14,20 +14,25 @@ let
 
   # QQ 的聊天记录在 /mnt/data 上（~/.config/QQ 里的 nt_qq_*、global 是指过去的符号链接）。
   # 如果在盘没有挂载时启动，QQ 会把目录创建在根分区的空挂载点里，挂载后这些目录被覆盖，聊天记录看起来就“丢失”了。
-  # 所以命令和菜单项都换成了先检查挂载的包装脚本：登录时会话恢复启动 QQ 可能比挂载更早，最多先等 10 秒。
+  # 修复包使用系统的 nixpkgs 和 QQ，避免引入另一套运行时依赖。
+  qqFix = (inputs.linuxqq-wayland-fix.overlays.default pkgs pkgs).linuxqq-wayland-fix;
+  # 命令和菜单项都先检查挂载：登录时会话恢复启动 QQ 可能比挂载更早，最多先等 10 秒。
   qq = pkgs.symlinkJoin {
     name = "qq-${pkgs.qq.version}";
-    paths = [ pkgs.qq ];
+    paths = [ pkgs.qq qqFix ];
     nativeBuildInputs = [ pkgs.makeWrapper ];
     postBuild = ''
-      rm $out/bin/qq $out/share/applications/qq.desktop
-      makeWrapper ${pkgs.qq}/bin/qq $out/bin/qq --run '
+      rm $out/bin/qq $out/bin/linuxqq-wayland-fix $out/share/applications/qq.desktop $out/share/applications/linuxqq-wayland-fix.desktop
+      makeWrapper ${qqFix}/bin/linuxqq-wayland-fix $out/bin/linuxqq-wayland-fix --run '
+        case "''${1:-}" in --doctor|--version|-h|--help|install|uninstall) ;; *)
         for _ in $(seq 20); do ${pkgs.util-linux}/bin/mountpoint -q /mnt/data && break; sleep 0.5; done
         if ! ${pkgs.util-linux}/bin/mountpoint -q /mnt/data; then
           ${pkgs.libnotify}/bin/notify-send -a QQ -i dialog-warning "QQ 没有启动" "/mnt/data 没有挂载，聊天记录在那块盘上" || true
           exit 1
-        fi'
-      sed "s|${pkgs.qq}/bin/qq|$out/bin/qq|" ${pkgs.qq}/share/applications/qq.desktop > $out/share/applications/qq.desktop
+        fi ;;
+        esac'
+      ln -s $out/bin/linuxqq-wayland-fix $out/bin/qq
+      sed "s|${qqFix}/bin/linuxqq-wayland-fix|$out/bin/linuxqq-wayland-fix|" ${qqFix}/share/applications/linuxqq-wayland-fix.desktop > $out/share/applications/qq.desktop
     '';
   };
 in

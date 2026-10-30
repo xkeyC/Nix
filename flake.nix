@@ -31,6 +31,13 @@
       flake = false;
     };
 
+    # Chaos HDR 的 fork，打包和 NixOS 模块都在 fork 的 flake 里。
+    # 升级：修改 url 里的提交号，再执行 `nix flake update chaos-hdr`。
+    chaos-hdr = {
+      url = "github:xkeyC/chaos-hdr/ec2803dfed650bc058536564c64a7b31fd31ce61";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # 隐私配置（密码哈希、邮箱等），目录本身被 .gitignore 忽略；模板见 private.example/。
     # 用 path: 输入是因为 git flake 看不到被忽略的文件。修改 private/ 后执行：
     #   nix flake update private

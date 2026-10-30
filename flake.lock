@@ -1,5 +1,26 @@
 {
   "nodes": {
+    "chaos-hdr": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793375311,
+        "narHash": "sha256-VXntwytVCbEzQAokK5rQS5AXIelEXGL4S+2Qm8Um5nw=",
+        "owner": "xkeyC",
+        "repo": "chaos-hdr",
+        "rev": "ec2803dfed650bc058536564c64a7b31fd31ce61",
+        "type": "github"
+      },
+      "original": {
+        "owner": "xkeyC",
+        "repo": "chaos-hdr",
+        "rev": "ec2803dfed650bc058536564c64a7b31fd31ce61",
+        "type": "github"
+      }
+    },
     "deepseek-harness": {
       "flake": false,
       "locked": {
@@ -102,6 +123,7 @@
     },
     "root": {
       "inputs": {
+        "chaos-hdr": "chaos-hdr",
         "deepseek-harness": "deepseek-harness",
         "dsh-nix": "dsh-nix",
         "home-manager": "home-manager",

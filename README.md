@@ -41,7 +41,7 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `dev-toolchains.nix` | 开发工具：gh、Rust、Python、Node、Flutter、Go、C/C++、.NET；git 设置；nix-ld（让下载来的通用 Linux 程序能直接运行） |
 | `home-manager.nix` | 用户软件：QQ（`/mnt/data` 没挂载时不启动）、FlClash、Claude Code、Codex |
 | `uu-remote.nix` | UU 远程被控端，以及开机自动登录 |
-| `chaos-hdr.nix` | 把 SDR 游戏画面转成 HDR 的 KWin 特效 |
+| `chaos-hdr.nix` | 把 SDR 游戏画面转成 HDR 的 KWin 特效（RTX HDR，着色器引擎作备用） |
 | `dlss5vklayer.nix` | DLSS 5 Neural Rendering 的游戏插件 |
 | `desktop-gpu.nix` | 桌面临时改用核显渲染，显示器仍接在 4090 上（`desktop-gpu igpu`，重新登录生效） |
 | `browser-hdr-video.nix` | Brave 播放 HDR 视频：给 KWin 打补丁，不再截掉 Chromium 的 HDR 高光；Brave 开 NVIDIA VA-API 硬解（B 站 HEVC / HDR） |
@@ -55,7 +55,7 @@ nixpkgs 里没有，或者 nixpkgs 的版本不能用的软件，在本仓库里
 | 软件 | 版本 | 用途 | 为什么自己打包 |
 |---|---|---|---|
 | [uu-remote-linux](https://github.com/VallierDev/uu-remote-linux) | 0.2.32 | 用官方 UU 远程客户端控制这台电脑（非官方被控端），附带一个 Linux 控制端 | nixpkgs 没有。另加了一个补丁，让 KDE 下只共享一块显示器 |
-| [Chaos HDR](https://github.com/chaosfox26/chaos-hdr) | 0.4.3 | 用 NVIDIA TrueHDR 把 SDR 游戏转成 HDR，Alt+Z 打开控制面板 | nixpkgs 没有；上游只提供 Arch 安装脚本 |
+| [Chaos HDR](https://github.com/xkeyC/chaos-hdr) | 0.5.0（fork） | 用 NVIDIA TrueHDR 把 SDR 游戏转成 HDR，失败时换用着色器引擎，Alt+Z 打开控制面板 | nixpkgs 没有；上游只提供 Arch 安装脚本。fork 增加了备用引擎和更多画面选项 |
 | [DLSS5VKLayer](https://github.com/bmitch87/DLSS5VKLayer) | 0.3.2-1 | 在 Linux 游戏里使用 DLSS 5 Neural Rendering | nixpkgs 没有 |
 | [FlClash](https://github.com/chen08209/FlClash) | 0.9.2 | Clash Meta 代理客户端 | nixpkgs 没有 |
 | [Strata](https://github.com/Niko1221/Strata) | 0.2.7（control 0.1.52） | 在本机运行大模型，提供 OpenAI / Anthropic 兼容 API | nixpkgs 没有；上游只提供安装脚本 |
@@ -64,13 +64,14 @@ nixpkgs 里没有，或者 nixpkgs 的版本不能用的软件，在本仓库里
 
 打包文件在 `nixos/packages/` 和 `nixos/ai/packages/`；已存档的 VR 软件在 `archive/vr/packages/`，不参与构建，恢复方法见 `archive/vr/default.nix` 开头。
 
-另外有三份外部源码直接从 GitHub 引用（定义在 `flake.nix`，锁定到固定提交）：
+另外有四份外部源码直接从 GitHub 引用（定义在 `flake.nix`，锁定到固定提交）：
 
 | 名字 | 是什么 |
 |---|---|
 | `home-manager` | Home Manager 本身 |
 | `dsh-nix` | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（命令 `dsh`）的 Nix 打包 |
 | `deepseek-harness` | DeepSeek Harness 的源码，供 `dsh-nix` 构建 |
+| `chaos-hdr` | [Chaos HDR fork](https://github.com/xkeyC/chaos-hdr) 的源码、打包和 NixOS 模块 |
 
 ## 日常维护
 

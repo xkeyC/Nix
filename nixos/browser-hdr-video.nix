@@ -23,7 +23,7 @@ let
   });
 
   # make-brave.nix 自己也加了一个 --enable-features，Chromium 只认最后一个，所以要带上它原有的几项。
-  brave = pkgs.brave.override {
+  brave = (pkgs.brave.override {
     commandLineArgs = "--enable-features=" + lib.concatStringsSep "," [
       "AcceleratedVideoDecodeLinuxGL"
       "AcceleratedVideoEncoder"
@@ -33,7 +33,20 @@ let
       "VaapiIgnoreDriverChecks"
       "PlatformHEVCDecoderSupport"
     ] + " --ignore-gpu-blocklist";
-  };
+  }).overrideAttrs (old: {
+    nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.makeWrapper ];
+    postFixup = (old.postFixup or "") + ''
+      # Wayland WebGPU 的共享图像可能在多个 Vulkan 驱动之间选错设备。
+      # NVIDIA 桌面会话只让 Brave 枚举 NVIDIA；核显桌面会话沿用系统选择。
+      wrapProgram "$out/bin/brave" --run '
+        if [ -z "''${VK_DRIVER_FILES+x}" ] && [ -z "''${VK_ICD_FILENAMES+x}" ] &&
+           [ "''${__GLX_VENDOR_LIBRARY_NAME:-}" != mesa ] &&
+           [ -r /run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json ]; then
+          export VK_DRIVER_FILES=/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json
+        fi
+      '
+    '';
+  });
 in
 {
   security.wrappers.kwin_wayland.source = lib.mkForce "${kwin}/bin/kwin_wayland";

@@ -26,6 +26,24 @@ let
   '';
 in
 {
+  # 固定 DWProton 11.0-14，避免随 nixpkgs 更新而自动升级。
+  nixpkgs.overlays = [
+    (final: prev:
+      let
+        version = "dwproton-11.0-14";
+        source = final.fetchzip {
+          url = "https://dawn.wine/dawn-winery/dwproton/releases/download/${version}/${version}-x86_64.tar.xz";
+          hash = "sha256-dXtOdfqIU0wWQ0OXDRbHuFTifGJ7ti+Ij4g+a/RV71Q=";
+        };
+      in {
+        dwproton-bin = prev.dwproton-bin.overrideAttrs (_: {
+          inherit version;
+          src = source;
+          toolName = "${version}-x86_64";
+        });
+      })
+  ];
+
   environment.systemPackages = [ dwproton dwprotonExplorer ];
   # Steam 模块同时启用 32 位图形库，供 Steam 和 Windows 游戏使用。
   programs.steam = {

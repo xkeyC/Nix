@@ -26,20 +26,35 @@ let
   '';
 in
 {
-  # 固定 DWProton 11.0-14，避免随 nixpkgs 更新而自动升级。
+  # 固定 DWProton 11.0-16，避免随 nixpkgs 更新而自动升级。
   nixpkgs.overlays = [
     (final: prev:
       let
-        version = "dwproton-11.0-14";
+        version = "dwproton-11.0-16";
         source = final.fetchzip {
           url = "https://dawn.wine/dawn-winery/dwproton/releases/download/${version}/${version}-x86_64.tar.xz";
-          hash = "sha256-dXtOdfqIU0wWQ0OXDRbHuFTifGJ7ti+Ij4g+a/RV71Q=";
+          hash = "sha256-fNAT/PRoWE5WcjGmoZYjPXx+wF0rlKuUXWQk0+P7s7U=";
         };
       in {
-        dwproton-bin = prev.dwproton-bin.overrideAttrs (_: {
+        dwproton-bin = prev.dwproton-bin.overrideAttrs (old: {
           inherit version;
           src = source;
           toolName = "${version}-x86_64";
+          # Nix store 里文件的 mtime 都相同，wineboot 不会在前缀升级时重跑 wine.inf，
+          # 旧前缀因此缺少 SamSs 服务和 lsass.exe，ACE 无法加载驱动。
+          # 这里在前缀版本变化时删除 .update-timestamp。下面 Python 的缩进已算上 Nix 字符串去掉的 12 格。
+          # 等 https://github.com/NixOS/nixpkgs/pull/581490 合并并更新 nixpkgs 后删除这两项。
+          postInstall = (old.postInstall or "") + ''
+            rm $steamcompattool/proton
+            cp $src/proton $steamcompattool
+          '';
+          preFixup = old.preFixup + ''
+            substituteInPlace "$steamcompattool/proton" \
+              --replace-fail "            self.upgrade_pfx(old_ver)" \
+                             "            self.upgrade_pfx(old_ver)
+                        if old_ver != CURRENT_PREFIX_VERSION and file_exists(self.prefix_dir + '.update-timestamp', follow_symlinks=False):
+                            os.remove(self.prefix_dir + '.update-timestamp')"
+          '';
         });
       })
   ];

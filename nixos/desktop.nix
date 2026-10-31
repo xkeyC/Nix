@@ -17,6 +17,16 @@
     noto-fonts-color-emoji
   ];
 
+  # 让浏览器通过 WebHID 使用华硕设备（ROG 鼠标的网页驱动 gearlink.asus.com）：hidraw 默认只有 root 能打开，
+  # 网页会报 “Failed to open the device”。uaccess 只把权限授予当前在本机前登录的用户。
+  # 按厂商匹配，因为有线连接、接收器等模式的产品 ID 不同。规则编号必须小于 73，否则设备重新插拔后不会生效，
+  # 所以不用 services.udev.extraRules（99-local.rules）。
+  services.udev.packages = [
+    (pkgs.writeTextDir "lib/udev/rules.d/70-asus-webhid.rules" ''
+      KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0b05", TAG+="uaccess"
+    '')
+  ];
+
   # 音频：PipeWire 由 Plasma 默认启用，默认把所有声音重采样到 48 kHz。
   # 放开主板 USB 声卡支持的全部采样率：声卡空闲时按第一个开始播放的音源切换
   # （44.1 kHz 的音乐就按 44.1 kHz 输出，不重采样）；正在播放时不切换采样率，之后开始的声音会被重采样。

@@ -36,17 +36,18 @@
 
 rustPlatform.buildRustPackage {
   pname = "uu-remote-linux";
-  version = "0.2.32-unstable-2026-10-25";
+  version = "0.2.41-unstable-2026-10-30";
 
   src = fetchFromGitHub {
     owner = "VallierDev";
     repo = "uu-remote-linux";
-    rev = "ab5d0a656bee2736886321529b72ea6e0bb5130e";
-    hash = "sha256-KqVHkYqfOtdGEjaVn3YQblD+x8V58HZacP1iGMJQSsI=";
+    rev = "6bf05a6361e58dbeec5846f044d234bed04fcf02";
+    hash = "sha256-PR1ZyVJJmuRtjBPbraWq88+K4F2ixH1ak4Fb5+NFDwk=";
   };
 
   # KDE 的远程控制 portal 不弹出屏幕选择框，多屏时直接把整个工作区拼成一路画面。
-  # 补丁新增 UU_PORTAL_MONITOR=<序号>：按显示器分别请求画面流，只采集其中一块，绝对坐标的鼠标事件改为发送到该屏的 portal 流。
+  # 补丁新增 UU_PORTAL_MONITOR=<序号>：按显示器分别请求画面流，只采集其中一块（绝对坐标的鼠标事件上游已改为发送到该 portal 流）。
+  # UU_PORTAL_MONITOR_CMD=<命令>：命令输出 x,y 时选坐标相同的流，失败时才用序号。
   patches = [ ./uu-remote-linux-portal-monitor.patch ];
 
   # 上游 Cargo.lock 的副本（与 rev 一致；升级 rev 时一并替换）。

@@ -18,13 +18,13 @@
 
 stdenvNoCC.mkDerivation rec {
   pname = "strata";
-  # control 组件版本；对应 Strata 0.2.7 release。
-  version = "0.1.52";
-  release = "0.2.7";
+  # control 组件版本；对应 Strata 0.2.8 release。
+  version = "0.1.54";
+  release = "0.2.8";
 
   src = fetchurl {
     url = "https://github.com/Niko1221/Strata/releases/download/v${release}/strata-control-${version}-linux-x86_64.tar.gz";
-    hash = "sha256-OZ/Mjy0jKy96t9+C2GOHSkuBUBnO2HeiT2ikf/yBEKA=";
+    hash = "sha256-VyUg+7DfMMwWT8fOGVyEkIsCqqZ7Vp17GYLZTNGKNks=";
   };
 
   nativeBuildInputs = [ makeWrapper ];

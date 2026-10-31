@@ -3,9 +3,9 @@
 
   inputs = {
     # 与当前 nixos channel 相同的 nixpkgs 提交
-    # （nixos-version = 26.11pre1097682.02c087f3fe67）。
+    # （nixos-version = 26.11.20261030.1c89083）。
     # 升级 nixpkgs：`nix flake update nixpkgs`，然后 `sudo nixos-rebuild switch`。
-    nixpkgs.url = "github:NixOS/nixpkgs/02c087f3fe673c9e317f206a627cb6b910336dbe";
+    nixpkgs.url = "github:NixOS/nixpkgs/1c89083e451e891152365b799595cf7790a43325";
 
     linuxqq-wayland-fix = {
       url = "github:SHORiN-KiWATA/linuxqq-wayland-fix";
@@ -16,7 +16,7 @@
     # 都用 flake = false 按源码目录导入，行为与原来直接 import 相同。
     # 升级：修改 url 里的提交号（或者去掉提交号，再执行 `nix flake update <名字>`）。
     home-manager = {
-      url = "github:nix-community/home-manager/c216bf5a1f173b0481bd5c8c489ebe5595ecc68c";
+      url = "github:nix-community/home-manager/095fef2f265c3c0da4fe315efba8f8a04495ab34";
       flake = false;
     };
     # DSH 的 Nix 打包（Home Manager 模块 + profile 构建）。
@@ -24,10 +24,10 @@
       url = "github:Samuka007/dsh-nix/090ed51b27e65af7c0aadf64dcd7b208030aa3a9";
       flake = false;
     };
-    # DeepSeek Harness 源码，锁定在发布 tag dsh-v0.2.1-rc.3（比 dsh-nix 自身锁定的新，
+    # DeepSeek Harness 源码，锁定在发布 tag dsh-v0.2.1-rc.5（比 dsh-nix 自身锁定的新，
     # 版本号与安装步骤的差异在 home/xkeyc.nix 里覆盖）。
     deepseek-harness = {
-      url = "github:deepseek-ai/deepseek-harness/1f81c047fc48fa190a683e469daa699857e9afe8";
+      url = "github:deepseek-ai/deepseek-harness/b830ec950faba0a46dda564be3e2d854afed94f1";
       flake = false;
     };
 

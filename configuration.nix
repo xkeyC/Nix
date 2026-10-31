@@ -16,7 +16,18 @@
   boot.loader.efi.canTouchEfiVariables = true;
 
   # Use latest kernel.
-  boot.kernelPackages = pkgs.linuxPackages_latest;
+  # nixos-unstable 还停在 7.3，这里先用 nixpkgs master 的 7.3.1（哈希相同）；
+  # channel 升到 7.3.1 后改回 pkgs.linuxPackages_latest。
+  boot.kernelPackages = pkgs.linuxPackagesFor (pkgs.linuxKernel.kernels.linux_7_3.override {
+    argsOverride = rec {
+      version = "7.3.1";
+      modDirVersion = version;
+      src = pkgs.fetchurl {
+        url = "mirror://kernel/linux/kernel/v7.x/linux-${version}.tar.xz";
+        hash = "sha256:0cg25pg7qfbf814ppbpxsx7j4wrngkpr0aiwjsf84kvkjfnmlngs";
+      };
+    };
+  });
 
   # networking.hostName = "nixos"; # Define your hostname.
 

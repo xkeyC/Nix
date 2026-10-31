@@ -17,6 +17,29 @@
 
 let
   uu-remote-linux = pkgs.callPackage ./packages/uu-remote-linux.nix { };
+
+  # 要共享的显示器型号，取自 EDID（strings /sys/class/drm/card*-*/edid）。
+  monitorModel = "PG32UCDM3";
+  # 输出这个型号当前的逻辑坐标（x,y）：先按 EDID 找接口，再问 KDE 坐标。portal 的流只带坐标，没有型号。
+  monitorPosition = pkgs.writeShellApplication {
+    name = "uu-portal-monitor-position";
+    runtimeInputs = [ pkgs.gnugrep pkgs.jq pkgs.kdePackages.libkscreen ];
+    text = ''
+      for edid in /sys/class/drm/card*-*/edid; do
+        dir=''${edid%/edid}
+        [ "$(cat "$dir/status")" = connected ] || continue
+        grep -qaF ${pkgs.lib.escapeShellArg monitorModel} "$edid" || continue
+        connector=''${dir##*/}
+        connector=''${connector#card*-}
+        position=$(kscreen-doctor -j | jq -er --arg name "$connector" \
+          '.outputs[] | select(.name == $name and .enabled) | "\(.pos.x),\(.pos.y)"')
+        echo "$position"
+        exit 0
+      done
+      echo "显示器 ${monitorModel} 未连接" >&2
+      exit 1
+    '';
+  };
 in
 {
   environment.systemPackages = [ uu-remote-linux ];
@@ -29,8 +52,10 @@ in
     environment = {
       RUST_LOG = "info";
       # 只共享一块显示器（补丁功能，见 packages/uu-remote-linux.nix）。序号对应日志里的
-      # "Portal monitor stream N: position=… size=…"；删掉这行恢复上游行为（整个工作区）。
-      UU_PORTAL_MONITOR = "0";
+      # "Portal monitor stream N: position=… size=…"；删掉这两行恢复上游行为（整个工作区）。
+      # 每次连接都按 monitorModel 重新定位，序号只在定位失败时使用（流的顺序随接线变化）。
+      UU_PORTAL_MONITOR_CMD = "${monitorPosition}/bin/uu-portal-monitor-position";
+      UU_PORTAL_MONITOR = "1";
     };
     serviceConfig = {
       ExecStart = "${uu-remote-linux}/bin/uuremote-server";

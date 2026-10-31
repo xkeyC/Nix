@@ -26,7 +26,7 @@ in
   # - 修正 nixpkgs 的 node 下启动失败的问题（见 postInstall）。
   programs.dsh.package =
     (pkgs.callPackage "${dshNix}/pkgs/dsh.nix" { src = dshSrc; }).overrideAttrs (old: {
-      version = "0.2.1-rc.3";
+      version = "0.2.1-rc.5";
       # src 已通过 callPackage 换成新版，只是 overrideAttrs 看不到。
       __intentionallyOverridingVersion = true;
       # 构建脚本默认用 `git rev-parse HEAD` 取提交号，沙箱里没有 git 仓库。

@@ -1,0 +1,145 @@
+Subject: [PATCH] ntfs: don't remount read-only when a read is interrupted
+
+A fatal signal makes read_mapping_folio() return -EINTR while a process
+waits on metadata. That is not a volume error, but ntfs_lookup(),
+ntfs_lookup_inode_by_name() and the readdir index reads still pass it to
+ntfs_error(), which applies errors=remount-ro. Killing a directory walker
+therefore turns the whole volume read-only.
+
+Skip ntfs_error() for -EINTR and -ERESTARTSYS on those paths. Index
+contexts are shared with index updates, where an interrupted read can leave
+an update half done, so ntfs_ib_read() and ntfs_ia_open() only do this for
+contexts ntfs_readdir() marks read_only. ntfs_inode_attr_pread() now returns
+the folio error, as mainline does, instead of a short count.
+
+Not upstream: local patch against v7.3.1 written from the analysis in
+https://github.com/namjaejeon/linux-ntfs/issues/98
+---
+--- a/fs/ntfs/dir.c
++++ b/fs/ntfs/dir.c
+@@ -94,8 +94,9 @@
+ 	/* Get hold of the mft record for the directory. */
+ 	m = map_mft_record(dir_ni);
+ 	if (IS_ERR(m)) {
+-		ntfs_error(sb, "map_mft_record() failed with error code %ld.",
+-				-PTR_ERR(m));
++		if (PTR_ERR(m) != -EINTR && PTR_ERR(m) != -ERESTARTSYS)
++			ntfs_error(sb, "map_mft_record() failed with error code %ld.",
++					-PTR_ERR(m));
+ 		return ERR_MREF(PTR_ERR(m));
+ 	}
+ 	ctx = ntfs_attr_get_search_ctx(dir_ni, m);
+@@ -315,8 +316,9 @@
+ 	folio = read_mapping_folio(ia_mapping, vcn <<
+ 			dir_ni->itype.index.vcn_size_bits >> PAGE_SHIFT, NULL);
+ 	if (IS_ERR(folio)) {
+-		ntfs_error(sb, "Failed to map directory index page, error %ld.",
+-				-PTR_ERR(folio));
++		if (PTR_ERR(folio) != -EINTR && PTR_ERR(folio) != -ERESTARTSYS)
++			ntfs_error(sb, "Failed to map directory index page, error %ld.",
++					-PTR_ERR(folio));
+ 		err = PTR_ERR(folio);
+ 		goto err_out;
+ 	}
+@@ -776,6 +778,7 @@
+ 		mutex_unlock(&ndir->mrec_lock);
+ 		return -ENOMEM;
+ 	}
++	ictx->read_only = true;
+ 
+ 	ra = kzalloc_obj(struct file_ra_state, GFP_NOFS);
+ 	if (!ra) {
+--- a/fs/ntfs/index.c
++++ b/fs/ntfs/index.c
+@@ -735,9 +735,11 @@
+ 
+ 	ia_vi = ntfs_index_iget(VFS_I(ni), icx->name, icx->name_len);
+ 	if (IS_ERR(ia_vi)) {
+-		ntfs_error(icx->idx_ni->vol->sb,
+-				"Failed to open index allocation of inode %llu",
+-				(unsigned long long)ni->mft_no);
++		if (!icx->read_only ||
++		    (PTR_ERR(ia_vi) != -EINTR && PTR_ERR(ia_vi) != -ERESTARTSYS))
++			ntfs_error(icx->idx_ni->vol->sb,
++					"Failed to open index allocation of inode %llu",
++					(unsigned long long)ni->mft_no);
+ 		return NULL;
+ 	}
+ 
+@@ -754,6 +756,8 @@
+ 
+ 	ret = ntfs_inode_attr_pread(VFS_I(icx->ia_ni), pos, icx->block_size, (u8 *)dst);
+ 	if (ret != icx->block_size) {
++		if (icx->read_only && (ret == -EINTR || ret == -ERESTARTSYS))
++			return -EIO;
+ 		if (ret == -1)
+ 			ntfs_error(icx->idx_ni->vol->sb, "Failed to read index block");
+ 		else
+--- a/fs/ntfs/index.h
++++ b/fs/ntfs/index.h
+@@ -87,6 +87,7 @@
+ 	u32 block_size;
+ 	u8 vcn_size_bits;
+ 	bool sync_write;
++	bool read_only;
+ };
+ 
+ int ntfs_index_root_inconsistent(struct ntfs_volume *vol,
+--- a/fs/ntfs/inode.c
++++ b/fs/ntfs/inode.c
+@@ -849,7 +849,8 @@
+ 			/* Now load the attribute list. */
+ 			err = load_attribute_list(ni, ni->attr_list, ni->attr_list_size);
+ 			if (err) {
+-				ntfs_error(vi->i_sb, "Failed to load attribute list attribute.");
++				if (err != -EINTR && err != -ERESTARTSYS)
++					ntfs_error(vi->i_sb, "Failed to load attribute list attribute.");
+ 				goto unm_err_out;
+ 			}
+ 		} else /* if (!a->non_resident) */ {
+@@ -3591,8 +3592,10 @@
+ 	do {
+ 		/* Update @index and get the next folio. */
+ 		folio = read_mapping_folio(mapping, index, NULL);
+-		if (IS_ERR(folio))
++		if (IS_ERR(folio)) {
++			err = PTR_ERR(folio);
+ 			break;
++		}
+ 
+ 		offset = offset_in_folio(folio, pos);
+ 		attr_len = min_t(size_t, (size_t)count, folio_size(folio) - offset);
+--- a/fs/ntfs/namei.c
++++ b/fs/ntfs/namei.c
+@@ -218,7 +218,8 @@
+ 				NTFS_I(dent_inode)->seq_no);
+ 			iput(dent_inode);
+ 			dent_inode = ERR_PTR(-EIO);
+-		} else
++		} else if (PTR_ERR(dent_inode) != -EINTR &&
++			   PTR_ERR(dent_inode) != -ERESTARTSYS)
+ 			ntfs_error(vol->sb, "ntfs_iget(0x%lx) failed with error code %li.",
+ 					dent_ino, PTR_ERR(dent_inode));
+ 		kfree(name);
+@@ -233,8 +234,9 @@
+ 		ntfs_debug("Done.");
+ 		return d_splice_alias(NULL, dent);
+ 	}
+-	ntfs_error(vol->sb, "ntfs_lookup_ino_by_name() failed with error code %i.",
+-			-MREF_ERR(mref));
++	if (MREF_ERR(mref) != -EINTR && MREF_ERR(mref) != -ERESTARTSYS)
++		ntfs_error(vol->sb, "ntfs_lookup_ino_by_name() failed with error code %i.",
++				-MREF_ERR(mref));
+ 	return ERR_PTR(MREF_ERR(mref));
+ handle_name:
+ 	{
+@@ -322,7 +324,8 @@
+ 		if (m)
+ 			unmap_mft_record(ni);
+ 		iput(dent_inode);
+-		ntfs_error(vol->sb, "Failed, returning error code %i.", err);
++		if (err != -EINTR && err != -ERESTARTSYS)
++			ntfs_error(vol->sb, "Failed, returning error code %i.", err);
+ 		return ERR_PTR(err);
+ 	}
+ }

@@ -35,6 +35,13 @@ in
       name = "ntfs-sparse-continuation-extent";
       patch = ./packages/ntfs-sparse-continuation-extent.patch;
     }
+    # 进程在等待目录或 inode 读取时被杀（kill、Ctrl+C、程序退出），读取返回 -EINTR，
+    # 驱动把它当卷错误，日志是 “error code -4” 或 “Failed to read full index block”，整块盘变只读。
+    # 上游还没修（namjaejeon/linux-ntfs#98），这是本地补丁；内核包含修复后删掉这个补丁。
+    {
+      name = "ntfs-eintr-no-remount-ro";
+      patch = ./packages/ntfs-eintr-no-remount-ro.patch;
+    }
   ];
 
   environment.systemPackages = [ pkgs.ntfsprogs-plus ];

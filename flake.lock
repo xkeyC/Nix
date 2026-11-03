@@ -111,8 +111,8 @@
     "private": {
       "flake": false,
       "locked": {
-        "lastModified": 1793123814,
-        "narHash": "sha256-zWXblyMOVlbv+PjfUsKC55HaOExPuDpnHFrMHumRkow=",
+        "lastModified": 1793721881,
+        "narHash": "sha256-3OQ/WhFyJ80SSPsR82+Taqn80ZE9rpn7tpBlRNNN+P8=",
         "path": "/home/xkeyc/Nix/private",
         "type": "path"
       },

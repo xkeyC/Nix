@@ -44,7 +44,7 @@
     # FlydigiLinux：飞智手柄力回馈扳机（官方 mod）与 DS 模式，打包和 NixOS 模块在它自己的 flake 里。
     # 升级：修改 url 里的提交号，再执行 `nix flake update flydigi-linux`。
     flydigi-linux = {
-      url = "github:xkeyC/FlydigiLinux/e0668091e7a2b2fae3c8586bd205d3e0ff340ff6";
+      url = "github:xkeyC/FlydigiLinux/7ace79819abb6983053e81953bf04a782c53ebe5";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

@@ -8,10 +8,12 @@
       "https://mirror.sjtu.edu.cn/nix-channels/store?priority=10"
       "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store?priority=20"
       "https://mirrors.ustc.edu.cn/nix-channels/store?priority=30"
+      "https://nix-citizen.cachix.org?priority=34"
       "https://cache.nixos-cuda.org?priority=35"
       "https://cache.nixos.org?priority=40"
     ];
     trusted-public-keys = [
+      "nix-citizen.cachix.org-1:lPMkWc2X8XD4/7YPEEwXKKBg+SVbYTVrAaLA2wQTKCo="
       "cache.nixos-cuda.org:74DUi4Ye579gUqzH4ziL9IyiJBlDpMRn9MBN8oNan9M="
     ];
   };

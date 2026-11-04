@@ -7,6 +7,9 @@
     # 升级 nixpkgs：`nix flake update nixpkgs`，然后 `sudo nixos-rebuild switch`。
     nixpkgs.url = "github:NixOS/nixpkgs/1c89083e451e891152365b799595cf7790a43325";
 
+    # Star Citizen 的 Wine 环境和 RSI Launcher。
+    nix-citizen.url = "github:LovingMelody/nix-citizen";
+
     linuxqq-wayland-fix = {
       url = "github:SHORiN-KiWATA/linuxqq-wayland-fix";
       inputs.nixpkgs.follows = "nixpkgs";

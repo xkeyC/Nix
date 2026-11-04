@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, inputs, ... }:
 
 let
   dwproton = pkgs.writeShellScriptBin "dwproton" ''
@@ -59,7 +59,11 @@ in
       })
   ];
 
-  environment.systemPackages = [ dwproton dwprotonExplorer ];
+  environment.systemPackages = [
+    dwproton
+    dwprotonExplorer
+    inputs.nix-citizen.packages.${pkgs.stdenv.hostPlatform.system}.rsi-launcher
+  ];
   # Steam 模块同时启用 32 位图形库，供 Steam 和 Windows 游戏使用。
   programs.steam = {
     enable = true;

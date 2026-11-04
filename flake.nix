@@ -41,6 +41,13 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # FlydigiLinux：飞智手柄力回馈扳机（官方 mod）与 DS 模式，打包和 NixOS 模块在它自己的 flake 里。
+    # 升级：修改 url 里的提交号，再执行 `nix flake update flydigi-linux`。
+    flydigi-linux = {
+      url = "github:xkeyC/FlydigiLinux/eea10d2cee015aac1dd0e0345d8edf676a20e9db";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # 隐私配置（密码哈希、邮箱等），目录本身被 .gitignore 忽略；模板见 private.example/。
     # 用 path: 输入是因为 git flake 看不到被忽略的文件。修改 private/ 后执行：
     #   nix flake update private

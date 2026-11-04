@@ -87,6 +87,27 @@
         "type": "github"
       }
     },
+    "flydigi-linux": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793814753,
+        "narHash": "sha256-Ku9cV0c28TAio2E/OJ8eKXi3xShcVwl2n1YXtuHojDk=",
+        "owner": "xkeyC",
+        "repo": "FlydigiLinux",
+        "rev": "eea10d2cee015aac1dd0e0345d8edf676a20e9db",
+        "type": "github"
+      },
+      "original": {
+        "owner": "xkeyC",
+        "repo": "FlydigiLinux",
+        "rev": "eea10d2cee015aac1dd0e0345d8edf676a20e9db",
+        "type": "github"
+      }
+    },
     "git-hooks": {
       "inputs": {
         "flake-compat": [
@@ -264,6 +285,7 @@
         "chaos-hdr": "chaos-hdr",
         "deepseek-harness": "deepseek-harness",
         "dsh-nix": "dsh-nix",
+        "flydigi-linux": "flydigi-linux",
         "home-manager": "home-manager",
         "linuxqq-wayland-fix": "linuxqq-wayland-fix",
         "nix-citizen": "nix-citizen",

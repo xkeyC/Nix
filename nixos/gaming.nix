@@ -67,7 +67,7 @@ in
   # Steam 模块同时启用 32 位图形库，供 Steam 和 Windows 游戏使用。
   programs.steam = {
     enable = true;
-    extraCompatPackages = [ pkgs.dwproton-bin ];
+    extraCompatPackages = [ pkgs.dwproton-bin pkgs.proton-ge-bin ];
   };
 
   # ntsync 是内核里的 NT 同步原语驱动，行为比 fsync 更接近 Windows。内核把它编译成了模块，但默认

@@ -1,0 +1,50 @@
+From 258239e79b842e5246fb7f50758d9d15430f4102 Mon Sep 17 00:00:00 2001
+From: Matthias Goergens <matthias.goergens@gmail.com>
+Date: Fri, 2 Oct 2026 12:34:57 +0800
+Subject: [PATCH] ntfs: do not use a stale runlist pointer when undoing $MFT
+ extension
+
+When ntfs_mft_data_extend_allocation_nolock() fails after it has
+rebuilt the mapping pairs of the last $MFT data extent, undo_alloc
+truncates the runlist and then rebuilds the old mapping pairs from rl2,
+a pointer into the runlist taken before the truncation.
+ntfs_rl_truncate_nolock() can reallocate the runlist, and KASAN then
+reports a use-after-free in ntfs_mapping_pairs_build().
+
+Pass the start of the runlist instead, and hold the runlist lock for
+reading while the mapping pairs are built from it.
+ntfs_mapping_pairs_build() skips to the element containing the first
+vcn by itself.
+
+Fixes: 1e9ea7e04472 ("Revert "fs: Remove NTFS classic"")
+Cc: stable@vger.kernel.org
+Reviewed-by: Baolin Liu <liubaolin@kylinos.cn>
+Signed-off-by: Matthias Goergens <matthias.goergens@gmail.com>
+Signed-off-by: Namjae Jeon <linkinjeon@kernel.org>
+---
+ fs/ntfs/mft.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/fs/ntfs/mft.c b/fs/ntfs/mft.c
+index e01e367a588d97..c2339acc631972 100644
+--- a/fs/ntfs/mft.c
++++ b/fs/ntfs/mft.c
+@@ -2043,11 +2043,16 @@ static int ntfs_mft_data_extend_allocation_nolock(struct ntfs_volume *vol)
+ 	if (ctx) {
+ 		a = ctx->attr;
+ 		if (mp_rebuilt && !IS_ERR(ctx->mrec)) {
+-			if (ntfs_mapping_pairs_build(vol, (u8 *)a + le16_to_cpu(
++			int err;
++
++			down_read(&mft_ni->runlist.lock);
++			err = ntfs_mapping_pairs_build(vol, (u8 *)a + le16_to_cpu(
+ 				a->data.non_resident.mapping_pairs_offset),
+ 				old_alen - le16_to_cpu(
+ 					a->data.non_resident.mapping_pairs_offset),
+-				rl2, ll, -1, NULL, NULL, NULL)) {
++				mft_ni->runlist.rl, ll, -1, NULL, NULL, NULL);
++			up_read(&mft_ni->runlist.lock);
++			if (err) {
+ 				ntfs_error(vol->sb, "Failed to restore mapping pairs array.%s", es);
+ 				NVolSetErrors(vol);
+ 			}

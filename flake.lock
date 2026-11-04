@@ -94,17 +94,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1793814753,
-        "narHash": "sha256-Ku9cV0c28TAio2E/OJ8eKXi3xShcVwl2n1YXtuHojDk=",
+        "lastModified": 1793815452,
+        "narHash": "sha256-pbye4iUZZMTqWtHV28nuJkuMHnzFusaUQSsEGCt3U40=",
         "owner": "xkeyC",
         "repo": "FlydigiLinux",
-        "rev": "eea10d2cee015aac1dd0e0345d8edf676a20e9db",
+        "rev": "e0668091e7a2b2fae3c8586bd205d3e0ff340ff6",
         "type": "github"
       },
       "original": {
         "owner": "xkeyC",
         "repo": "FlydigiLinux",
-        "rev": "eea10d2cee015aac1dd0e0345d8edf676a20e9db",
+        "rev": "e0668091e7a2b2fae3c8586bd205d3e0ff340ff6",
         "type": "github"
       }
     },

@@ -3,9 +3,9 @@
 
   inputs = {
     # 与当前 nixos channel 相同的 nixpkgs 提交
-    # （nixos-version = 26.11.20261030.1c89083）。
+    # （nixos-version = 26.11.20261103.1d06008）。
     # 升级 nixpkgs：`nix flake update nixpkgs`，然后 `sudo nixos-rebuild switch`。
-    nixpkgs.url = "github:NixOS/nixpkgs/1c89083e451e891152365b799595cf7790a43325";
+    nixpkgs.url = "github:NixOS/nixpkgs/1d060086d60cb76a40cf37109f979d88a5bd6396";
 
     # Star Citizen 的 Wine 环境和 RSI Launcher。
     nix-citizen.url = "github:LovingMelody/nix-citizen";

@@ -7,7 +7,7 @@
 #   * native-viewer,viewer-sdl：同时编译出控制端（视频用外部 ffmpeg 进程解码）。
 #   * 运行时 dlopen 的裸 soname（libpam、libgbm、托盘用的 ayatana-appindicator）在 NixOS 上找不到，
 #     补充到可执行文件的 RUNPATH；不使用 LD_LIBRARY_PATH，以免泄漏给远程终端里启动的 shell。
-#   * ffmpeg（编码，需 libx264 / h264_nvenc）、wl-clipboard 等外部命令追加到 PATH 末尾。
+#   * ffmpeg（编码，需 libx264 / h264_nvenc）、wl-clipboard、fc-match（控制端找字体）等外部命令追加到 PATH 末尾。
 { lib
 , rustPlatform
 , fetchFromGitHub
@@ -30,6 +30,7 @@
 , libayatana-appindicator
 , ffmpeg
 , wl-clipboard
+, fontconfig
 , xrandr
 , pciutils
 }:
@@ -48,7 +49,9 @@ rustPlatform.buildRustPackage {
   # KDE 的远程控制 portal 不弹出屏幕选择框，多屏时直接把整个工作区拼成一路画面。
   # 补丁新增 UU_PORTAL_MONITOR=<序号>：按显示器分别请求画面流，只采集其中一块（绝对坐标的鼠标事件上游已改为发送到该 portal 流）。
   # UU_PORTAL_MONITOR_CMD=<命令>：命令输出 x,y 时选坐标相同的流，失败时才用序号。
-  patches = [ ./uu-remote-linux-portal-monitor.patch ];
+  # 控制端用 `fc-match sans-serif:lang=zh-cn` 找界面字体，lang 压不过 family：本机返回只有拉丁字母的 Noto Sans，
+  # 串流后的菜单里中文全是方块。补丁在查询里加上 charset=4e2d（必须含「中」字），并优先 Noto Sans CJK SC（否则同一 ttc 里先挑到 KR）。
+  patches = [ ./uu-remote-linux-portal-monitor.patch ./uu-remote-linux-viewer-cjk-font.patch ];
 
   # 上游 Cargo.lock 的副本（与 rev 一致；升级 rev 时一并替换）。
   cargoLock.lockFile = ./uu-remote-linux.Cargo.lock;
@@ -77,7 +80,7 @@ rustPlatform.buildRustPackage {
     for bin in $out/bin/uuremote-server $out/bin/uuremote-viewer; do
       patchelf --add-rpath ${lib.makeLibraryPath [ linux-pam libgbm libayatana-appindicator ]} $bin
       wrapProgram $bin "''${gappsWrapperArgs[@]}" \
-        --suffix PATH : ${lib.makeBinPath [ ffmpeg wl-clipboard xrandr pciutils ]}
+        --suffix PATH : ${lib.makeBinPath [ ffmpeg wl-clipboard xrandr pciutils fontconfig.bin ]}
     done
   '';
 

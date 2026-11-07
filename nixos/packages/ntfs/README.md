@@ -18,17 +18,23 @@
     触发，放在 ntfs 上的 qcow2 虚拟盘 2026-11-04 实测丢过数据。
 - `0039`：本地补丁。进程等待目录或 inode 读取时被杀（kill、Ctrl+C、程序退出），读取返回 -EINTR，驱动把它当
   卷错误（日志 “error code -4” 或 “Failed to read full index block”），整块盘变只读。
-- `0040`：本地补丁。元数据更新路径上的读取被致命信号打断（返回 -EINTR）时，更新停在一半：unlink() 释放簇和
-  MFT 记录、删除目录项时改目录索引、分配簇或 MFT 记录。日志 “Failed to map first page (error -4)”、
-  “Leaving inconsistent metadata”、“ntfs_index_remove(): Delete failed”、“ntfs_cluster_alloc(): ... (error -4)”，
-  卷变只读，磁盘上留下没释放的簇、没目录项的 MFT 记录或坏掉的目录索引。2026-11-07 关机时 QQ 删 SQLite -wal 就是这样。
-  补丁加了 `ntfs_read_metadata_folio()`：-EINTR 时不可打断地等已经发出的读取完成，用于所有元数据更新路径上的读取；
-  查找和挂载时的读取不变。上游提交在 xkeyC/linux-ntfs 的 fix-eintr-metadata-update 分支。
-  验证（QEMU，读取限速 40 IOPS，drop_caches 后中途 kill）：删分散在不同 $Bitmap 页的小文件、删跨 4 个 $Bitmap 页的
-  大文件、在 4000 个长文件名的目录里删文件、fallocate、dd conv=fsync。不带 0040 时每个场景都会变只读，删文件的场景
-  ntfsck 报 $Bitmap、MFT 和索引损坏（7.3.1 + 0001–0039 删目录项第 2 次就坏了整个目录索引，ntfsck 报 4001 个错误）；带上后每个场景
-  20 次都不变只读、ntfsck 干净。在 ntfs-next（KASAN + lockdep）和 7.3.1 上都验证过；ntfs-next 上另外验证了读取被打断后又失败
-  （dm-delay + fail_make_request）时返回 -EIO，进程正常退出。没能触发的：在大目录里建文件（kill 都落在查找阶段）。
+- `0040`：本地补丁。元数据读取被致命信号打断（返回 -EINTR）时，驱动报卷错误、整块盘变只读；如果读取发生在更新
+  途中，更新还会停在一半：unlink() 释放簇和 MFT 记录、删除目录项时改目录索引、分配簇或 MFT 记录。日志
+  “Failed to map first page (error -4)”、“Leaving inconsistent metadata”、“ntfs_index_remove(): Delete failed”、
+  “ntfs_cluster_alloc(): ... (error -4)”、“Failed to map directory index page, error 4”。磁盘上会留下没释放的簇、
+  没目录项的 MFT 记录或坏掉的目录索引。2026-11-07 关机时 QQ 删 SQLite -wal 就是这样。
+  补丁在 aops.c 加 `ntfs_read_metadata_folio()`：读法和 read_mapping_folio() 一样，但不可打断地等读取完成、
+  持页锁检查结果，不会返回 -EINTR。用于全部元数据读取（位图、MFT、$MFTMirr、属性读写即目录索引块、目录查找、
+  ntfs_attr_set、清空 $LogFile 的块设备读改写）；挂载时的检查、压缩文件数据和命名流内容不变（7.3.1 没有命名流）。
+  它也覆盖了 0039 处理的查找情况（namjaejeon/linux-ntfs#98）；0039 留着无害，上游合入 0040 后两个一起删。
+  上游提交在 xkeyC/linux-ntfs 的 fix-eintr-metadata-update 分支（v3）。
+  验证（QEMU，读取限速 40 IOPS，drop_caches 后中途 kill，每个场景 20 次）：删分散在不同 $Bitmap 页的小文件、删跨
+  4 个 $Bitmap 页的大文件、在 4000 个长文件名的目录里删文件、ls -l 这个目录、fallocate、dd conv=fsync。不带 0040 时
+  每个场景都会变只读，删文件的场景 ntfsck 报 $Bitmap、MFT 和索引损坏（7.3.1 + 0001–0039 删目录项第 2 次就坏了
+  整个目录索引，ntfsck 报 4001 个错误）；带上后全部不变只读、ntfsck 干净。ntfs-next（KASAN + lockdep，SIGKILL 和
+  SIGTERM）和 7.3.1（SIGKILL）都验证过；ntfs-next 上另外验证了读取被打断后又失败（dm-delay + fail_make_request）
+  时返回 -EIO、进程正常退出。没能触发的：在大目录里建文件（kill 都落在之前的查找里）。
+  代价：被杀的进程要等正在进行的那次元数据读取完成；设备一直不返回时（如 multipath queue_if_no_path）会停在 D 状态。
 
 ## 什么时候删
 
@@ -80,4 +86,4 @@
 | `0037` | [569f514f0ec7](https://github.com/torvalds/linux/commit/569f514f0ec7) | ntfs: flush the block device when syncing a directory |
 | `0038` | [89467388e8af](https://github.com/torvalds/linux/commit/89467388e8af) | ntfs: roll back the ACL xattr commit when the WSL mode update |
 | `0039` | 本地补丁，上游未修（namjaejeon/linux-ntfs#98） | ntfs: don't remount read-only when a read is interrupted |
-| `0040` | 本地补丁，上游未修（ntfs-next 2b4bb6d6d 仍是可打断读取） | ntfs: don't let a fatal signal interrupt metadata updates |
+| `0040` | 本地补丁，上游未修（ntfs-next 2b4bb6d6d 仍是可打断读取） | ntfs: don't let a fatal signal interrupt metadata reads |

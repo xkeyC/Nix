@@ -1,25 +1,111 @@
-Subject: [PATCH] ntfs: don't let a fatal signal interrupt metadata updates
+Subject: [PATCH] ntfs: don't let a fatal signal interrupt metadata reads
 
 read_mapping_folio() waits for the read it submits with
 folio_wait_locked_killable(), so it returns -EINTR as soon as the caller
-has a fatal signal pending. On the paths that change metadata that error
-stops an update half way: a SIGKILL or SIGTERM that arrives while a
-thread is in unlink(), creating a file or allocating clusters leaves
-clusters allocated in $Bitmap, an MFT record in use, or a directory index
-inconsistent, and errors=remount-ro turns the volume read-only.
+has a fatal signal pending. A metadata read that fails like that in the
+middle of an update (unlink(), a directory index update, a cluster or MFT
+record allocation) stops the update half way, leaving clusters allocated
+in $Bitmap, an MFT record in use or a directory index inconsistent; even
+a failed lookup ends in ntfs_error(), so errors=remount-ro turns the
+volume read-only.
 
-Add ntfs_read_metadata_folio(). On -EINTR the read is already in flight,
-so it looks the folio up again and waits for the read uninterruptibly,
-returning it when it is uptodate and -EIO otherwise. Use it for every
-metadata read on an update path: $Bitmap and $MFT/$BITMAP updates, the
-cluster allocator's $Bitmap scan, MFT record mapping, allocation and
-$MFTMirr updates, attribute reads and writes (which carry directory index
-blocks), and ntfs_attr_set(). Lookups and mount-time reads are unchanged.
+Add ntfs_read_metadata_folio() in aops.c, which reads the folio the same
+way but waits for the read uninterruptibly and checks the result with the
+folio locked, and use it for metadata reads: $Bitmap and $MFT/$BITMAP
+updates and scans, MFT records, $MFTMirr, attribute reads and writes
+(directory index blocks), directory lookups, ntfs_attr_set() and the
+block device read-modify-write that empties $LogFile. Mount-time checks
+and compressed file data keep using read_mapping_folio().
 
-Not upstream: local patch against v7.3.1, also submitted for ntfs-next
-(github.com/xkeyC/linux-ntfs branch fix-eintr-metadata-update). Testing
-is described in README.md.
+Not upstream: local patch against v7.3.1, prepared for ntfs-next in
+github.com/xkeyC/linux-ntfs branch fix-eintr-metadata-update. It also
+covers the lookup case of namjaejeon/linux-ntfs#98 that 0039 works around.
+Testing is described in README.md.
 ---
+diff --git a/fs/ntfs/aops.c b/fs/ntfs/aops.c
+index 517d9a1..601c6ea 100644
+--- a/fs/ntfs/aops.c
++++ b/fs/ntfs/aops.c
+@@ -7,6 +7,7 @@
+  * Copyright (c) 2025 LG Electronics Co., Ltd.
+  */
+ 
++#include <linux/swap.h>
+ #include <linux/writeback.h>
+ 
+ #include "attrib.h"
+@@ -303,6 +304,71 @@ static int ntfs_swap_activate(struct swap_info_struct *sis,
+ 			&ntfs_read_iomap_ops);
+ }
+ 
++/**
++ * ntfs_read_metadata_folio - read a metadata folio without being interrupted
++ * @mapping:	address space of the metadata inode or block device
++ * @index:	page cache index to read
++ *
++ * read_mapping_folio() waits for the read it submits with
++ * folio_wait_locked_killable(), so it fails with -EINTR as soon as the
++ * caller has a fatal signal pending.  A metadata read that fails like that
++ * in the middle of an update (an unlink(), a directory index update, a
++ * cluster or MFT record allocation) stops the update half way, and even a
++ * failed lookup ends in ntfs_error(), which applies errors=remount-ro.
++ *
++ * Read the folio the same way, but wait for the read uninterruptibly, as
++ * the buffer cache does for metadata of other filesystems.  The uptodate
++ * check is made with the folio locked, because ntfs clears and sets the
++ * uptodate flag of $MFT folios under the folio lock while it updates them.
++ *
++ * Return: the uptodate folio with a reference held, or an ERR_PTR(): -EIO
++ * if the read failed, or the error from allocating or reading the folio.
++ */
++struct folio *ntfs_read_metadata_folio(struct address_space *mapping,
++				       pgoff_t index)
++{
++	struct folio *folio;
++	bool read_failed = false;
++	int err;
++
++	folio = filemap_get_folio(mapping, index);
++	if (!IS_ERR(folio)) {
++		if (folio_test_uptodate(folio))
++			goto out;
++		folio_put(folio);
++	}
++repeat:
++	folio = __filemap_get_folio(mapping, index, FGP_LOCK | FGP_CREAT,
++				    mapping_gfp_mask(mapping));
++	if (IS_ERR(folio))
++		return folio;
++	if (folio_test_uptodate(folio)) {
++		folio_unlock(folio);
++		goto out;
++	}
++	if (read_failed) {
++		folio_unlock(folio);
++		folio_put(folio);
++		return ERR_PTR(-EIO);
++	}
++
++	/* ->read_folio() unlocks the folio when the read completes. */
++	err = mapping->a_ops->read_folio(NULL, folio);
++	if (err) {
++		folio_put(folio);
++		if (err == AOP_TRUNCATED_PAGE)
++			goto repeat;
++		return ERR_PTR(err);
++	}
++	folio_wait_locked(folio);
++	read_failed = !folio_test_uptodate(folio);
++	folio_put(folio);
++	goto repeat;
++out:
++	folio_mark_accessed(folio);
++	return folio;
++}
++
+ const struct address_space_operations ntfs_aops = {
+ 	.read_folio		= ntfs_read_folio,
+ 	.readahead		= ntfs_readahead,
 diff --git a/fs/ntfs/attrib.c b/fs/ntfs/attrib.c
 index 22afc03..52215ce 100644
 --- a/fs/ntfs/attrib.c
@@ -33,6 +119,19 @@ index 22afc03..52215ce 100644
  		if (IS_ERR(folio)) {
  			ret = PTR_ERR(folio);
  			ntfs_error(VFS_I(ni)->i_sb, "Failed to read a page %lu for attr %#x: %ld",
+diff --git a/fs/ntfs/bdev-io.c b/fs/ntfs/bdev-io.c
+index 4f27eed..afb1d1d 100644
+--- a/fs/ntfs/bdev-io.c
++++ b/fs/ntfs/bdev-io.c
+@@ -99,7 +99,7 @@ int ntfs_bdev_write(struct super_block *sb, void *buf, loff_t start, size_t size
+ 	for (; idx < idx_end; idx++, from = 0) {
+ 		u32 len;
+ 
+-		folio = read_mapping_folio(sb->s_bdev->bd_mapping, idx, NULL);
++		folio = ntfs_read_metadata_folio(sb->s_bdev->bd_mapping, idx);
+ 		if (IS_ERR(folio)) {
+ 			ntfs_error(sb, "Unable to read %ld page", idx);
+ 			return PTR_ERR(folio);
 diff --git a/fs/ntfs/bitmap.c b/fs/ntfs/bitmap.c
 index 5a44575..a70c530 100644
 --- a/fs/ntfs/bitmap.c
@@ -55,6 +154,21 @@ index 5a44575..a70c530 100644
  		if (IS_ERR(folio)) {
  			ntfs_error(vi->i_sb,
  				   "Failed to map subsequent page (error %li), aborting.",
+diff --git a/fs/ntfs/dir.c b/fs/ntfs/dir.c
+index ab7de18..baec0be 100644
+--- a/fs/ntfs/dir.c
++++ b/fs/ntfs/dir.c
+@@ -313,8 +313,8 @@ descend_into_child_node:
+ 	 * of PAGE_SIZE and map the page cache page, reading it from
+ 	 * disk if necessary.
+ 	 */
+-	folio = read_mapping_folio(ia_mapping, vcn <<
+-			dir_ni->itype.index.vcn_size_bits >> PAGE_SHIFT, NULL);
++	folio = ntfs_read_metadata_folio(ia_mapping, vcn <<
++			dir_ni->itype.index.vcn_size_bits >> PAGE_SHIFT);
+ 	if (IS_ERR(folio)) {
+ 		if (PTR_ERR(folio) != -EINTR && PTR_ERR(folio) != -ERESTARTSYS)
+ 			ntfs_error(sb, "Failed to map directory index page, error %ld.",
 diff --git a/fs/ntfs/inode.c b/fs/ntfs/inode.c
 index 1f32f77..fc27a90 100644
 --- a/fs/ntfs/inode.c
@@ -164,58 +278,16 @@ index 482a216..f0771ae 100644
  		ntfs_error(vol->sb, "Failed to map page containing allocated mft record 0x%llx.",
  				bit);
 diff --git a/fs/ntfs/ntfs.h b/fs/ntfs/ntfs.h
-index cb69707..2c07fa6 100644
+index cb69707..dcf827d 100644
 --- a/fs/ntfs/ntfs.h
 +++ b/fs/ntfs/ntfs.h
-@@ -290,6 +290,52 @@ static inline int ntfs_ffs(int x)
+@@ -290,6 +290,10 @@ static inline int ntfs_ffs(int x)
  	return r;
  }
  
-+/**
-+ * ntfs_read_metadata_folio - read a metadata folio without being interrupted
-+ * @mapping:	address space of the metadata inode
-+ * @index:	page cache index to read
-+ *
-+ * read_mapping_folio() waits for its own read with folio_wait_locked_killable(),
-+ * so it returns -EINTR when the caller has a fatal signal pending.  On paths
-+ * that update metadata that error is never wanted: a signal that arrives in
-+ * the middle of an unlink(), a directory index update or a cluster or MFT
-+ * record allocation would stop the update half way, leaving clusters or MFT
-+ * records allocated, an index or $MFTMirr inconsistent, and errors=remount-ro
-+ * turns the volume read-only.  Use this helper for every metadata read that can
-+ * happen on such a path.  Lookups and mount-time reads, which change nothing
-+ * yet, may keep using read_mapping_folio().
-+ *
-+ * The read has already been submitted when the killable wait gives up, so
-+ * wait for it with an uninterruptible lock wait instead.  This only waits for
-+ * I/O that is already in flight.  If the folio is reclaimed before it can be
-+ * looked up again, retry the read a few times before giving up.
-+ *
-+ * Return: the uptodate folio with a reference held, or an ERR_PTR().
-+ */
-+static inline struct folio *ntfs_read_metadata_folio(struct address_space *mapping,
-+						     pgoff_t index)
-+{
-+	struct folio *folio;
-+	int tries = 3;
-+
-+	do {
-+		folio = read_mapping_folio(mapping, index, NULL);
-+		if (PTR_ERR_OR_ZERO(folio) != -EINTR)
-+			return folio;
-+
-+		folio = filemap_get_folio(mapping, index);
-+		if (IS_ERR(folio))
-+			continue;
-+		folio_wait_locked(folio);
-+		if (folio_test_uptodate(folio))
-+			return folio;
-+		folio_put(folio);
-+		return ERR_PTR(-EIO);
-+	} while (--tries);
-+
-+	return ERR_PTR(-EINTR);
-+}
++/* From fs/ntfs/aops.c */
++struct folio *ntfs_read_metadata_folio(struct address_space *mapping,
++				       pgoff_t index);
 +
  /* From fs/ntfs/bdev-io.c */
  int ntfs_bdev_read(struct block_device *bdev, char *data, loff_t start, size_t size);

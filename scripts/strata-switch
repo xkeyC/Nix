@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# 选择本地 GGUF 模型，交给 Strata 准备并启动。
+set -euo pipefail
+root=${STRATA_MODELS_DIR:-/mnt/application/Strata/models/models}
+data_dir=${STRATA_DATA_DIR:-/mnt/application/Strata/models}
+key_file=${STRATA_KEY_FILE:-/mnt/application/Strata/api-key}
+shopt -s nullglob nocaseglob
+models=()
+for dir in "$root"/*/; do
+  files=("$dir"*.gguf)
+  for file in "${files[@]}"; do
+    name=${file##*/}
+    [[ ${name,,} == mmproj* ]] && continue
+    if [[ $name =~ -([0-9]{5})-of-([0-9]{5})\.gguf$ ]]; then
+      [[ ${BASH_REMATCH[1]} == 00001 ]] || continue
+      total=$((10#${BASH_REMATCH[2]}))
+      prefix=${file%-00001-of-*}
+      complete=1
+      for ((i=1; i<=total; i++)); do
+        printf -v shard '%s-%05d-of-%05d.gguf' "$prefix" "$i" "$total"
+        [[ -s $shard ]] || complete=0
+      done
+      (( complete )) || continue
+    fi
+    models+=("${dir%/}")
+    break
+  done
+done
+for file in "$root"/*.gguf; do
+  name=${file##*/}
+  [[ ${name,,} == mmproj* || $name =~ -[0-9]{5}-of-[0-9]{5}\.gguf$ ]] && continue
+  [[ -s $file ]] && models+=("$file")
+done
+if ((${#models[@]} == 0)); then
+  printf '没有找到完整模型：%s\n' "$root" >&2
+  exit 1
+fi
+if [[ ${1:-} == --list ]]; then
+  printf '%s\n' "${models[@]}"
+  exit 0
+fi
+if [[ ${1:-} == --help ]]; then
+  printf '用法：strata-switch [模型目录名或编号] [Strata launch 选项...]\n       strata-switch --list\n'
+  exit 0
+fi
+if (($#)); then
+  choice=$1; shift
+else
+  printf '本地模型：\n' >&2
+  for i in "${!models[@]}"; do printf '  %d) %s\n' "$((i+1))" "${models[i]##*/}" >&2; done
+  read -r -p '选择编号：' choice
+fi
+selected=
+if [[ $choice =~ ^[0-9]+$ ]] && ((10#$choice > 0 && 10#$choice <= ${#models[@]})); then
+  selected=${models[$((10#$choice-1))]}
+else
+  for path in "${models[@]}"; do
+    if [[ $choice == "$path" || $choice == "${path##*/}" ]]; then selected=$path; break; fi
+  done
+fi
+[[ -n $selected ]] || { printf '找不到模型：%s\n' "$choice" >&2; exit 1; }
+[[ -s $key_file ]] || { printf 'API 密钥文件不存在或为空：%s\n' "$key_file" >&2; exit 1; }
+IFS= read -r STRATA_SWITCH_KEY < "$key_file" || [[ -n ${STRATA_SWITCH_KEY:-} ]]
+export STRATA_SWITCH_KEY
+hash=$(printf '%s' "$selected" | sha256sum)
+preset="switch-${hash:0:16}"
+args=(--model-path "$selected" --data-dir "$data_dir" --access lan --port 41873 --api-key-env STRATA_SWITCH_KEY --save-preset "$preset" --yes --no-tui "$@")
+printf '检查模型：%s\n' "$selected"
+strata launch "${args[@]}" --plan
+for arg in "$@"; do
+  [[ $arg == --plan ]] && exit 0
+done
+if systemctl --user is-active --quiet strata.service; then
+  printf '停止现有 strata.service，交由 Strata launch 管理新模型。\n'
+  systemctl --user stop strata.service
+fi
+exec strata launch "${args[@]}" --restart

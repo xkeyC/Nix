@@ -51,7 +51,7 @@ in
   };
 
   config = {
-    environment.systemPackages = [ strata ];
+    environment.systemPackages = [ strata (pkgs.writeShellScriptBin "strata-switch" (builtins.readFile ../../scripts/strata-switch)) ];
 
     systemd.user.services.strata = {
       description = "Strata local LLM server";

@@ -94,6 +94,17 @@
           core.fileMode = false;
           # 仓库从 Windows 迁移而来：提交时把 CRLF 转回 LF，检出保持 LF。
           core.autocrlf = "input";
+
+          # git send-email 走 QQ 邮箱 SMTP（给内核等邮件列表发补丁）。登录账号在 private/default.nix；
+          # 密码用 QQ 邮箱的授权码（网页版：设置 → 账号 → 开启 SMTP 服务），不写进配置：
+          # 第一次发送时输入，由 git 的内存凭据缓存保存 2 小时。每封信发出前都要确认。
+          sendemail = {
+            smtpServer = "smtp.qq.com";
+            smtpServerPort = 465;
+            smtpEncryption = "ssl";
+            confirm = "always";
+          };
+          credential."smtp://smtp.qq.com:465".helper = "cache --timeout=7200";
         };
       };
 

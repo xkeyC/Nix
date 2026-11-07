@@ -8,6 +8,7 @@
     ./system.nix       # 引导、主机名、网络、时区与语言、固件
     ./nix-settings.nix # allowUnfree、国内镜像与 CUDA 缓存
     ./ccache.nix       # 内核用 ccache 编译（带 ntfs 补丁，没有二进制缓存）
+    ./kernel-tuning.nix # CachyOS 的内核调优（sysctl / sysfs / 启动参数，不换内核）
     ./users.nix        # 用户账户（密码哈希在 private/）
     ./shell.nix        # 登录 shell 用 zsh + oh-my-zsh，Claude Code 仍用 bash
     ./ssh.nix          # OpenSSH

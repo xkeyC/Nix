@@ -27,6 +27,7 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | 模块 | 作用 |
 |---|---|
 | `system.nix` | 引导（systemd-boot，保留最近 4 个版本）、主机名、网络、时区、语言、CPU 微码 |
+| `kernel-tuning.nix` | 从 CachyOS 内核搬来的调优：抢占模式 full、THP always + 后台整理、关闭主动内存整理和水位提升、MGLRU 防抖、缩短 EEVDF 时间片 |
 | `nix-settings.nix` | 允许安装非自由软件；国内镜像（上交、清华、中科大）和 CUDA 二进制缓存 |
 | `users.nix` | 用户 xkeyc |
 | `shell.nix` | 登录 shell 用 zsh + oh-my-zsh（自动建议、语法高亮）；Claude Code 通过 `CLAUDE_CODE_SHELL` 仍用 bash |

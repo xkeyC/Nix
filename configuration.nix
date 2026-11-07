@@ -15,8 +15,11 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  # Use latest kernel.
-  boot.kernelPackages = pkgs.linuxPackages_latest;
+  # Use latest kernel, compiled with ccache (nixos/ccache.nix): the ntfs patches in
+  # nixos/packages/ntfs/ rule out the binary cache, so the kernel is always built locally.
+  boot.kernelPackages = pkgs.linuxPackagesFor (pkgs.linuxPackages_latest.kernel.override {
+    stdenv = pkgs.ccacheStdenv;
+  });
 
   # networking.hostName = "nixos"; # Define your hostname.
 

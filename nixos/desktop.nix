@@ -55,7 +55,8 @@
   #
   # 用 KWin 窗口规则实现：同一个窗口匹配多条规则时，按 Order 的顺序第一条设置了「自适应同步」的规则生效。
   #   * vrr-allow-games：Steam 里的游戏（Proton 把窗口类别设成 steam_app_<ID>，非 Steam 游戏加进 Steam 也一样）
-  #     和不经过 Steam 运行的 Wine / Proton 程序（窗口类别是 exe 文件名）；「不影响」= 保持默认，全屏时才开 VRR。
+  #     和不经过 Steam 运行的 Wine / Proton 程序（窗口类别是 exe 文件名），以及 CapturePlay（采集卡回放，
+  #     窗口类别 capture-play）；「不影响」= 保持默认，全屏时才开 VRR。
   #   * vrr-deny-others：匹配其余所有窗口，强制不开 VRR，排在最后。
   # 其他游戏的窗口类别可在「系统设置 → 窗口规则 → 检测窗口属性」里查看，加到 wmclass 的正则里。
   # 每次激活都会重排 Order：白名单在最前、兜底规则在最后，自己在系统设置里加的规则保持原有顺序排在中间。
@@ -73,7 +74,7 @@
           done
         }
         # wmclassmatch：0 不重要 / 3 正则；adaptivesyncrule：1 不影响 / 2 强制
-        setRule vrr-allow-games Description "游戏：全屏时开 VRR" wmclass '^steam_app_|\.exe$' \
+        setRule vrr-allow-games Description "游戏：全屏时开 VRR" wmclass '^steam_app_|\.exe$|^capture-play$' \
           wmclassmatch 3 wmclasscomplete false adaptivesyncrule 1
         setRule vrr-deny-others Description "其他窗口：不开 VRR" wmclassmatch 0 adaptivesync false adaptivesyncrule 2
         # 旧版只给 Spectacle 关 VRR 的规则（黑名单）

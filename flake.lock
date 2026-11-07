@@ -1,5 +1,26 @@
 {
   "nodes": {
+    "capture-play": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1794048594,
+        "narHash": "sha256-JyRYtA+c4kFTgd6fWWeInLowDLzQU3fG9ZfUn4VkBAg=",
+        "owner": "xkeyC",
+        "repo": "CapturePlay",
+        "rev": "24fd15689c620fa7dbeee93cb6e3ff56b320e079",
+        "type": "github"
+      },
+      "original": {
+        "owner": "xkeyC",
+        "repo": "CapturePlay",
+        "rev": "24fd15689c620fa7dbeee93cb6e3ff56b320e079",
+        "type": "github"
+      }
+    },
     "chaos-hdr": {
       "inputs": {
         "nixpkgs": [
@@ -270,8 +291,8 @@
     "private": {
       "flake": false,
       "locked": {
-        "lastModified": 1793721881,
-        "narHash": "sha256-3OQ/WhFyJ80SSPsR82+Taqn80ZE9rpn7tpBlRNNN+P8=",
+        "lastModified": 1794043958,
+        "narHash": "sha256-d2zoPZhHa29cSct4dF3PJP56onwLPKKSiqgKiJJsKmU=",
         "path": "/home/xkeyc/Nix/private",
         "type": "path"
       },
@@ -282,6 +303,7 @@
     },
     "root": {
       "inputs": {
+        "capture-play": "capture-play",
         "chaos-hdr": "chaos-hdr",
         "deepseek-harness": "deepseek-harness",
         "dsh-nix": "dsh-nix",

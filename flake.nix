@@ -48,6 +48,13 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # CapturePlay：采集卡低延迟播放器（补帧、超分、HDR、DLSS NR），打包和 NixOS 模块在它自己的 flake 里。
+    # 升级：修改 url 里的提交号，再执行 `nix flake update capture-play`。
+    capture-play = {
+      url = "github:xkeyC/CapturePlay/24fd15689c620fa7dbeee93cb6e3ff56b320e079";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # 隐私配置（密码哈希、邮箱等），目录本身被 .gitignore 忽略；模板见 private.example/。
     # 用 path: 输入是因为 git flake 看不到被忽略的文件。修改 private/ 后执行：
     #   nix flake update private

@@ -23,6 +23,7 @@
     ./uuplugin.nix     # UU 主机加速（独立网络命名空间，「Steam（UU 加速）」快捷方式）
     ./chaos-hdr.nix    # NVIDIA TrueHDR KWin 特效（给 SDR 游戏窗口做 HDR）
     ./flydigi-linux.nix # 飞智 APEX 5 力回馈扳机（官方 mod）与 DS 模式
+    ./capture-play.nix  # 采集卡播放器（补帧 / 超分 / HDR / DLSS NR）
     ./desktop-gpu.nix  # 桌面临时改用核显渲染（desktop-gpu igpu|nvidia，重新登录生效）
     ./browser-hdr-video.nix # Brave 的 HDR 视频：KWin 补丁（不截高光）+ NVIDIA VA-API 硬解（B 站 HEVC）
     ./dlss5vklayer.nix # DLSS 5 Neural Rendering Vulkan 层 + Wine helper

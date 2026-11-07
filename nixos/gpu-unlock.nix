@@ -32,17 +32,8 @@ in
 {
   options.xkeyc.gpuUnlock.enable = lib.mkEnableOption "RTX 4090 Tensor Core unlock" // { default = true; };
 
-  config = lib.mkMerge [
-    {
-      # systemd-boot 可选此配置，禁用模块、固件和解锁参数。
-      specialisation.no-gpu-unlock.configuration = {
-        xkeyc.gpuUnlock.enable = lib.mkForce false;
-        system.nixos.tags = [ "no-gpu-unlock" ];
-      };
-    }
-    (lib.mkIf config.xkeyc.gpuUnlock.enable {
-    system.nixos.tags = [ "gpu-unlock" ];
-
+  # 已测试稳定，不再提供不解锁的启动项；要关闭时把 enable 设为 false。
+  config = lib.mkIf config.xkeyc.gpuUnlock.enable {
     boot.extraModulePackages = [
       (config.boot.kernelPackages.callPackage ({ stdenv, kernel, kernelModuleMakeFlags, ... }:
         stdenv.mkDerivation {
@@ -85,6 +76,5 @@ in
         ExecStart = "/bin/modprobe gpu_unlock";
       };
     };
-    })
-  ];
+  };
 }

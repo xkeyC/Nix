@@ -2,7 +2,7 @@
 
 内核 7.1 起自带的新 ntfs 驱动（Namjae Jeon）的补丁，由 `nixos/storage.nix` 按文件名顺序全部加到
 `boot.kernelPatches`。基于 7.3.1，按顺序全部能干净打上（无 fuzz），`fs/ntfs` 单独编译通过，没有警告
-（2026-11-04 验证）。
+（2026-11-07 验证，含 0040）。
 
 ## 组成
 
@@ -18,12 +18,23 @@
     触发，放在 ntfs 上的 qcow2 虚拟盘 2026-11-04 实测丢过数据。
 - `0039`：本地补丁。进程等待目录或 inode 读取时被杀（kill、Ctrl+C、程序退出），读取返回 -EINTR，驱动把它当
   卷错误（日志 “error code -4” 或 “Failed to read full index block”），整块盘变只读。
+- `0040`：本地补丁。元数据更新路径上的读取被致命信号打断（返回 -EINTR）时，更新停在一半：unlink() 释放簇和
+  MFT 记录、删除目录项时改目录索引、分配簇或 MFT 记录。日志 “Failed to map first page (error -4)”、
+  “Leaving inconsistent metadata”、“ntfs_index_remove(): Delete failed”、“ntfs_cluster_alloc(): ... (error -4)”，
+  卷变只读，磁盘上留下没释放的簇、没目录项的 MFT 记录或坏掉的目录索引。2026-11-07 关机时 QQ 删 SQLite -wal 就是这样。
+  补丁加了 `ntfs_read_metadata_folio()`：-EINTR 时不可打断地等已经发出的读取完成，用于所有元数据更新路径上的读取；
+  查找和挂载时的读取不变。上游提交在 xkeyC/linux-ntfs 的 fix-eintr-metadata-update 分支。
+  验证（QEMU，读取限速 40 IOPS，drop_caches 后中途 kill）：删分散在不同 $Bitmap 页的小文件、删跨 4 个 $Bitmap 页的
+  大文件、在 4000 个长文件名的目录里删文件、fallocate、dd conv=fsync。不带 0040 时每个场景都会变只读，删文件的场景
+  ntfsck 报 $Bitmap、MFT 和索引损坏（7.3.1 + 0001–0039 删目录项第 2 次就坏了整个目录索引，ntfsck 报 4001 个错误）；带上后每个场景
+  20 次都不变只读、ntfsck 干净。在 ntfs-next（KASAN + lockdep）和 7.3.1 上都验证过；ntfs-next 上另外验证了读取被打断后又失败
+  （dm-delay + fail_make_request）时返回 -EIO，进程正常退出。没能触发的：在大目录里建文件（kill 都落在查找阶段）。
 
 ## 什么时候删
 
 - 内核升级后先看哪些已经包含：在新内核源码上对每个补丁跑 `patch -p1 -R --dry-run`，能反向打上的就是已包含，删掉。
   只删除代码的补丁反向测试可能误判，以源码为准。
-- 7.3.y 稳定版会陆续带上 `0002`–`0038`；升到 7.4 后 `0001`–`0038` 都应该已经包含。`0039` 要等上游修复。
+- 7.3.y 稳定版会陆续带上 `0002`–`0038`；升到 7.4 后 `0001`–`0038` 都应该已经包含。`0039`、`0040` 要等上游修复。
 - 剩下的补丁换到新内核上若有冲突，按上游提交重新移植，保持文件名顺序。
 
 ## 清单
@@ -69,3 +80,4 @@
 | `0037` | [569f514f0ec7](https://github.com/torvalds/linux/commit/569f514f0ec7) | ntfs: flush the block device when syncing a directory |
 | `0038` | [89467388e8af](https://github.com/torvalds/linux/commit/89467388e8af) | ntfs: roll back the ACL xattr commit when the WSL mode update |
 | `0039` | 本地补丁，上游未修（namjaejeon/linux-ntfs#98） | ntfs: don't remount read-only when a read is interrupted |
+| `0040` | 本地补丁，上游未修（ntfs-next 2b4bb6d6d 仍是可打断读取） | ntfs: don't let a fatal signal interrupt metadata updates |

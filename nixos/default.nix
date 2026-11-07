@@ -29,6 +29,7 @@
     ./browser-hdr-video.nix # Brave 的 HDR 视频：KWin 补丁（不截高光）+ NVIDIA VA-API 硬解（B 站 HEVC）
     ./dlss5vklayer.nix # DLSS 5 Neural Rendering Vulkan 层 + Wine helper
     ./uu-remote.nix    # UU 远程 Linux 被控端（非官方 uu-remote-linux）
+    ./sunshine.nix     # Sunshine 游戏串流主机（KMS + NVIDIA）
     ./home-manager.nix # 用户级软件包（QQ / FlClash）与 Home Manager 设置
     ./dev-toolchains.nix # 开发工具链（Rust / Python / Node / Flutter / Go / C++）+ nix-ld
     ./ai               # 本地 AI 服务（Strata，不自启）

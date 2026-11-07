@@ -43,6 +43,7 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `dev-toolchains.nix` | 开发工具：gh、Rust、Python、Node、Flutter、Go、C/C++、.NET；git 设置；nix-ld（让下载来的通用 Linux 程序能直接运行） |
 | `home-manager.nix` | 用户软件：QQ（`/mnt/data` 没挂载时不启动）、FlClash、Claude Code、Codex |
 | `uu-remote.nix` | UU 远程被控端，以及开机自动登录 |
+| `sunshine.nix` | Sunshine 游戏串流，随图形会话启动；管理页面 `https://localhost:47990`，日志 `journalctl --user -u sunshine -f` |
 | `uuplugin.nix` | UU 主机加速，运行在独立的网络命名空间。「Steam（UU 加速）」快捷方式把 Steam 放进这个空间，只加速 Steam；原来的 Steam 快捷方式不受影响 |
 | `chaos-hdr.nix` | 把 SDR 游戏画面转成 HDR 的 KWin 特效（RTX HDR，着色器引擎作备用） |
 | `dlss5vklayer.nix` | DLSS 5 Neural Rendering 的游戏插件 |

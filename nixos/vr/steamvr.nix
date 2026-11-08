@@ -135,10 +135,13 @@ in
       pulseaudio
     ];
 
-    # Steam Link VR 连上后 Steam 会开始桌面串流（console-linux.txt 里是“>>> Starting desktop stream”）。
-    # Wayland 下不加 -pipewire 就没有桌面捕获（“Desktop capture unavailable, try running Steam with
-    # -pipewire”），紧接着 steamui.so 的串流线程在 memset 里段错误，Steam 整个崩溃，SteamVR 跟着退出
-    # （10/26、11/08 17:56、20:43 各一次）。加上后经 xdg-desktop-portal 的屏幕录制捕获桌面。
+    # Wayland 下 Steam 要加 -pipewire 才能捕获桌面（否则日志是“Desktop capture unavailable, try
+    # running Steam with -pipewire”），经 xdg-desktop-portal 的屏幕录制。
+    #
+    # 已知崩溃（与 -pipewire 无关）：在 SteamVR 菜单里点「桌面」时 Steam 开始桌面串流，按 X 根窗口
+    # 大小（两块 4K 屏、XWayland 缩放 2 时是 6000x3840，2304 万像素）准备 NV12 帧，约 3460 万字节，
+    # 超出它约 32 MiB 的缓冲区，steamui.so 的串流线程在 memset 里越界段错误，Steam 和 SteamVR 一起退出。
+    # 在 VR 里看桌面用 WayVR。
     package = pkgs.steam.override { extraArgs = "-pipewire"; };
   };
 

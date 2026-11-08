@@ -48,25 +48,34 @@ let
     # 只走 IPv4，避免游戏的 IPv6 流量绕过 UU。
     ns sysctl -q -w net.ipv6.conf.all.disable_ipv6=1 net.ipv6.conf.default.disable_ipv6=1
 
-    # 主机防火墙管不到这个空间，这里只放行回包、DHCP、绑定端口和 Steam Link 端口。
+    # 主机防火墙管不到这个空间，这里只放行回包和 DHCP，端口由 uu-netns-firewall 放行。
     # UU 启动后会自己插入 TUN 网卡的放行规则。
     ns iptables -w -A INPUT -i lo -j ACCEPT
     ns iptables -w -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
     ns iptables -w -A INPUT -p udp --sport 67 --dport 68 -j ACCEPT
-    for port in ${toString tcpPorts}; do
-      ns iptables -w -A INPUT -i uuwan0 -p tcp --dport "$port" -j ACCEPT
-    done
-    for port in ${toString udpPorts}; do
-      ns iptables -w -A INPUT -i uuwan0 -p udp --dport "$port" -j ACCEPT
-    done
-    for ports in ${toString steamTcpRanges}; do
-      ns iptables -w -A INPUT -i uuwan0 -p tcp --dport "$ports" -j ACCEPT
-    done
-    for ports in ${toString (steamUdpRanges ++ vrUdpPorts)}; do
-      ns iptables -w -A INPUT -i uuwan0 -p udp --dport "$ports" -j ACCEPT
-    done
     ns iptables -w -P INPUT DROP
     ns iptables -w -P FORWARD DROP
+  '';
+
+  # 放行端口的规则放在自己的链 uu-ports 里，单独一个服务维护：改了端口 switch 时只重跑这个服务，
+  # 清空重填这条链，不用重建命名空间（uu-netns 不随配置重启），也不碰 UU 自己加在 INPUT 里的规则。
+  netnsFirewall = pkgs.writeShellScript "uu-netns-firewall" ''
+    set -eu
+    ns() { ip netns exec uu "$@"; }
+    ns iptables -w -N uu-ports 2>/dev/null || ns iptables -w -F uu-ports
+    ns iptables -w -C INPUT -j uu-ports 2>/dev/null || ns iptables -w -A INPUT -j uu-ports
+    for port in ${toString tcpPorts}; do
+      ns iptables -w -A uu-ports -i uuwan0 -p tcp --dport "$port" -j ACCEPT
+    done
+    for port in ${toString udpPorts}; do
+      ns iptables -w -A uu-ports -i uuwan0 -p udp --dport "$port" -j ACCEPT
+    done
+    for ports in ${toString steamTcpRanges}; do
+      ns iptables -w -A uu-ports -i uuwan0 -p tcp --dport "$ports" -j ACCEPT
+    done
+    for ports in ${toString (steamUdpRanges ++ vrUdpPorts)}; do
+      ns iptables -w -A uu-ports -i uuwan0 -p udp --dport "$ports" -j ACCEPT
+    done
   '';
 
   dhcpScript = pkgs.writeShellScript "uu-netns-dhcp-event" ''
@@ -158,6 +167,21 @@ in
       RemainAfterExit = true;
       ExecStart = netnsUp;
       ExecStop = "${pkgs.iproute2}/bin/ip netns del uu";
+    };
+  };
+
+  systemd.services.uu-netns-firewall = {
+    description = "Open ports in the UU network namespace";
+    # 跟着 uu-netns 起停；命名空间重建时一起重跑。
+    bindsTo = [ "uu-netns.service" ];
+    partOf = [ "uu-netns.service" ];
+    after = [ "uu-netns.service" ];
+    wantedBy = [ "uu-netns.service" "multi-user.target" ];
+    path = with pkgs; [ iproute2 iptables ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = netnsFirewall;
     };
   };
 

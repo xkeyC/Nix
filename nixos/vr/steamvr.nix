@@ -76,6 +76,60 @@ let
     '';
   };
 
+  # SteamVR 运行时关掉副屏（竖放的 DP-1），退出后按原布局恢复。两块 4K 屏、XWayland 缩放 2 时
+  # X 根窗口是 6000x3840，在 SteamVR 菜单里点「桌面」会让 Steam 崩溃（见下面 programs.steam 的注释）；
+  # 只剩主屏时是 3840x2790。关之前把 kscreen-doctor -j 的布局存到 ~/.local/state，恢复时用它还原
+  # 副屏的模式、旋转、缩放和每块屏的位置、优先级；注销时 SteamVR 还开着，下次登录也会恢复。
+  # 临时不想要：systemctl --user stop steamvr-single-monitor。
+  steamvrSingleMonitor = pkgs.writeShellApplication {
+    name = "steamvr-single-monitor";
+    runtimeInputs = with pkgs; [ coreutils jq procps kdePackages.libkscreen ];
+    text = ''
+      output=DP-1
+      state="''${XDG_STATE_HOME:-$HOME/.local/state}/steamvr-single-monitor/layout.json"
+      mkdir -p "$(dirname "$state")"
+
+      rotation_name() {
+        case $1 in
+          2) echo left ;; 4) echo inverted ;; 8) echo right ;; 16) echo flipped ;;
+          32) echo flipped90 ;; 64) echo flipped180 ;; 128) echo flipped270 ;; *) echo none ;;
+        esac
+      }
+
+      restore() {
+        if ! kscreen-doctor -j | jq -e --arg o "$output" '.outputs[] | select(.name == $o and .connected)' >/dev/null; then
+          echo "$output 未连接，放弃恢复"
+          return 0
+        fi
+        local args=() name x y rot scale mode prio
+        while read -r name x y rot scale mode prio; do
+          if [ "$name" = "$output" ]; then
+            args+=("output.$name.enable" "output.$name.mode.$mode" "output.$name.rotation.$(rotation_name "$rot")" "output.$name.scale.$scale")
+          fi
+          args+=("output.$name.position.$x,$y" "output.$name.priority.$prio")
+        done < <(jq -r '.outputs[] | select(.connected and .enabled)
+          | "\(.name) \(.pos.x) \(.pos.y) \(.rotation) \(.scale) \(.currentModeId) \(.priority)"' "$state")
+        kscreen-doctor "''${args[@]}"
+        echo "SteamVR 已退出，恢复 $output"
+      }
+
+      while true; do
+        if pgrep -x -u "$(id -u)" vrserver >/dev/null; then
+          if [ ! -f "$state" ] &&
+            kscreen-doctor -j | jq -e --arg o "$output" '.outputs[] | select(.name == $o and .connected and .enabled)' >/dev/null; then
+            kscreen-doctor -j > "$state.tmp"
+            mv "$state.tmp" "$state"
+            kscreen-doctor "output.$output.disable"
+            echo "SteamVR 已启动，关闭 $output"
+          fi
+        elif [ -f "$state" ]; then
+          restore && rm -f "$state"
+        fi
+        sleep 2
+      done
+    '';
+  };
+
   wayvr = pkgs.symlinkJoin {
     name = "wayvr-${pkgs.wayvr.version}";
     paths = [ pkgs.wayvr ];
@@ -154,6 +208,18 @@ in
   # dlopen 会搜索调用者的 RUNPATH（$ORIGIN/../../../../bin/linux64，即 SteamVR/bin/linux64），
   # 所以在那里放一个指向容器内 libcrypto.so.1.1 的链接。目标路径只在 sniper 容器里存在，宿主上看是断链。
   # 若 SteamVR 换成 Steam Linux Runtime 4（libcrypto.so.3），这里要跟着改。
+  systemd.user.services.steamvr-single-monitor = {
+    description = "Turn off the secondary monitor while SteamVR runs";
+    wantedBy = [ "graphical-session.target" ];
+    partOf = [ "graphical-session.target" ];
+    after = [ "graphical-session.target" ];
+    serviceConfig = {
+      ExecStart = "${steamvrSingleMonitor}/bin/steamvr-single-monitor";
+      Restart = "on-failure";
+      RestartSec = 5;
+    };
+  };
+
   systemd.user.tmpfiles.rules = [
     "L+ %h/.local/share/Steam/steamapps/common/SteamVR/bin/linux64/libcrypto.so - - - - /usr/lib/x86_64-linux-gnu/libcrypto.so.1.1"
   ];

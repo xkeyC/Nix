@@ -118,11 +118,11 @@ nix store diff-closures /run/current-system ./result   # 列出将要变化的�
 > **新建文件要先 `git add`。** 本仓库是 git 仓库，构建时 Nix 只能看到 git 跟踪的文件。
 > 新建的 `.nix` 文件不 `git add`（不需要提交）就会报 `path ... does not exist`。
 
-Strata 模型启动与切换：运行 `strata-switch` 选择 `/mnt/application/Strata/models/models/` 下的完整 GGUF 模型；选择正在运行的相同模型会重启它。默认上下文为 256K，视觉编码器使用 CPU 和内存；可通过 `strata-switch 模型目录名 --context 128k --vision gpu` 等参数覆盖。使用 `strata-switch --list` 列出模型，或用 `strata-switch 模型目录名 --plan` 预览。首次使用模型时 Strata 可能需要准备模型文件。脚本使用现有 API 密钥和局域网端口 41873；如果 `strata.service` 正在运行，会先停止该服务，然后交给 `strata launch` 管理新实例。停止这个实例使用 `strata launch --stop`。脚本切换不会修改 Nix 中 `local.strata.profile`，因此之后手动启动 `strata.service` 仍使用原配置。
+Strata 模型启动与切换：运行 `strata-switch` 选择 `/mnt/application/Strata/models/models/` 下的完整 GGUF 模型；选择正在运行的相同模型会重启它。默认上下文为 256K，视觉编码器使用 CPU 和内存；可通过 `strata-switch 模型目录名 --context 128k --vision gpu` 等参数覆盖。使用 `strata-switch --list` 列出模型，或用 `strata-switch 模型目录名 --plan` 预览。首次使用模型时 Strata 可能需要准备模型文件。脚本使用现有 API 密钥和局域网端口 41873，通过 `strata launch` 管理实例；停止实例使用 `strata launch --stop`。
 
 ### 隐私配置（private/）
 
-不想公开的内容（用户初始密码的哈希、git 邮箱、磁盘 UUID、Strata 的数据目录和加载的模型）放在 `private/default.nix`。
+不想公开的内容（用户初始密码的哈希、git 邮箱、磁盘 UUID、Strata 的数据目录）放在 `private/default.nix`。
 这个目录不进 git，构建时通过 `flake.nix` 里的 `private` 输入单独读取。
 
 - **改完 `private/` 一定要执行 `nix flake update private`**，否则构建会报哈希不匹配。

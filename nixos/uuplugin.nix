@@ -31,7 +31,7 @@ let
   udpPorts = [ 16363 ];
   # Steam 在这个空间里运行时，主机防火墙对它不起作用，Steam Link（含 VR）要的端口得在这里放行：
   # 远程同乐局域网发现 UDP 27031-27036、TCP 27036-27037，vrlink 串流 UDP 10400-10401。
-  # 与 gaming / steamvr.nix 里主机防火墙开放的端口保持一致。
+  # 与 vr/steamvr.nix 里主机防火墙开放的端口保持一致。
   steamTcpRanges = [ "27036:27037" ];
   steamUdpRanges = [ "27031:27036" "10400:10401" ];
 

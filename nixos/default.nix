@@ -30,7 +30,7 @@
     ./dlss5vklayer.nix # DLSS 5 Neural Rendering Vulkan 层 + Wine helper
     ./uu-remote.nix    # UU 远程 Linux 被控端（非官方 uu-remote-linux）
     ./sunshine.nix     # Sunshine 游戏串流主机（KMS + NVIDIA）
-    ./steamvr.nix      # SteamVR + Steam Link VR（防火墙、vrlink 的 OpenSSL、仪表盘依赖）
+    ./vr               # SteamVR + Steam Link VR、WayVR、PaperTracker
     ./home-manager.nix # 用户级软件包（QQ / FlClash）与 Home Manager 设置
     ./dev-toolchains.nix # 开发工具链（Rust / Python / Node / Flutter / Go / C++）+ nix-ld
     ./ai               # 本地 AI 服务（Strata，不自启）

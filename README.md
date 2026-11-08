@@ -15,8 +15,9 @@ nixos/
   *.nix                   按主题划分的系统模块，见下表
   packages/               自己打包的软件和补丁
   ai/                     本地 AI 服务（Strata），自己的打包在 ai/packages/
+  vr/                     VR：SteamVR + Steam Link、WayVR、PaperTracker，自己的打包在 vr/packages/
 home/xkeyc.nix            用户 xkeyc 的 Home Manager 配置
-archive/vr/               已存档的 VR 配置（SteamVR + ALVR、Monado、WiVRn、VIVE Hub、PaperTracker），不参与构建
+archive/vr/               已存档的 VR 配置（ALVR、Monado、WiVRn、VIVE Hub），不参与构建
 private.example/          隐私配置的模板（真正的 private/ 不进 git）
 ```
 
@@ -50,6 +51,8 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `desktop-gpu.nix` | 桌面临时改用核显渲染，显示器仍接在 4090 上（`desktop-gpu igpu`，重新登录生效） |
 | `browser-hdr-video.nix` | Brave 播放 HDR 视频：给 KWin 打补丁，不再截掉 Chromium 的 HDR 高光；Brave 开 NVIDIA VA-API 硬解（B 站 HEVC / HDR） |
 | `flclash-tun.nix` | FlClash 代理 TUN 模式需要的特权服务 |
+| `vr/steamvr.nix` | SteamVR 与 Steam Link VR：防火墙端口、vrlink 的 OpenSSL、SteamVR 仪表盘依赖；WayVR 桌面叠加层 |
+| `vr/papertracker.nix` | PaperTracker 面捕/眼追，用 GE-Proton 运行，首次启动自动安装 |
 | `ai/strata.nix` | Strata 本地大模型服务（OpenAI / Anthropic 兼容 API），局域网可访问，需要手动启动 |
 
 ## RTX 4090 解锁

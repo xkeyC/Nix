@@ -49,13 +49,60 @@ let
         ${pkgs.coreutils}/bin/env -i "''${envs[@]}" "$runtime/bin/vrmonitor.sh" "$@"
     '';
   };
+
+  # SteamVR 的进程间通信用抽象 socket，按网络命名空间隔离。Steam 用「Steam（UU 加速）」启动时，
+  # vrserver 在网络命名空间 uu 里，宿主上启动的 OpenVR 程序（WayVR、PaperTracker 等）连不上，
+  # 报 VRInitError_Init_NoServerForBackgroundApp（挂载命名空间无关，实测只进网络命名空间就够）。
+  # 用法：steamvr-netns 程序 [参数...]。SteamVR（没开时看 Steam）在 uu 里就经 uu-netns 进去，否则直接运行。
+  # 要在 Steam 之后启动，否则留在宿主网络里。uu-netns 带 capability，经过它会被 glibc 清掉 LD_* 等环境变量，
+  # 需要的话在它之后再设置。
+  steamvrNetns = pkgs.writeShellApplication {
+    name = "steamvr-netns";
+    runtimeInputs = with pkgs; [ coreutils procps ];
+    text = ''
+      target=""
+      for name in vrserver steam; do
+        for p in $(pgrep -x -u "$(id -u)" "$name" || true); do
+          target=$(readlink "/proc/$p/ns/net") && break 2
+        done
+      done
+      uu=/run/netns/uu
+      if [ -n "$target" ] && [ -e "$uu" ] && [ -x /run/wrappers/bin/uu-netns ] \
+        && [ "$target" = "net:[$(stat -L -c %i "$uu")]" ] \
+        && [ "$target" != "$(readlink /proc/self/ns/net)" ]; then
+        exec /run/wrappers/bin/uu-netns "$@"
+      fi
+      exec "$@"
+    '';
+  };
+
+  wayvr = pkgs.symlinkJoin {
+    name = "wayvr-${pkgs.wayvr.version}";
+    paths = [ pkgs.wayvr ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      rm $out/bin/wayvr
+      # SteamVR 的 vrclient.so 依赖 libGL / libEGL / libuuid，宿主上找不到时 OpenVR 初始化直接失败
+      # （WayVR 用 Vulkan，自己不会加载这几个库）。LD_LIBRARY_PATH 要在进入网络命名空间之后再设：
+      # uu-netns 带 capability，执行它时 glibc 进入安全模式，会清掉 LD_LIBRARY_PATH。
+      # nixpkgs 只给 uidev 补了 dlopen 的库，wayvr 主程序的 RUNPATH 里没有 vulkan-loader，启动 OpenVR
+      # 后端时报 "libvulkan.so.1: cannot open shared object file"。
+      makeWrapper ${pkgs.wayvr}/bin/wayvr $out/libexec/wayvr \
+        --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath (with pkgs; [
+          libglvnd util-linux.lib vulkan-loader wayland libxcursor libxi ])}
+      makeWrapper ${steamvrNetns}/bin/steamvr-netns $out/bin/wayvr --add-flags $out/libexec/wayvr
+    '';
+  };
 in
 {
+  _module.args.steamvrNetns = steamvrNetns;
+
   environment.systemPackages = [
+    steamvrNetns
     # WayVR：VR 里的桌面叠加层（屏幕、键盘、手腕面板），支持 OpenVR（SteamVR）和 OpenXR。
     # 上游因为 SteamVR 的 bug 不再注册自动启动，要在 SteamVR 起来后手动运行 wayvr。
-    # 首次启动 KDE 会弹出屏幕共享框，按通知里提示的顺序选择屏幕。
-    pkgs.wayvr
+    # 首次启动 KDE 会弹出屏幕共享框，按通知里提示的顺序选择屏幕。经 steamvr-netns 启动。
+    wayvr
     vrmonitorUrlHandler
     (pkgs.makeDesktopItem {
       name = "vrmonitor-url-handler";

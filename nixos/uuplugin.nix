@@ -34,6 +34,8 @@ let
   # 与 vr/steamvr.nix 里主机防火墙开放的端口保持一致。
   steamTcpRanges = [ "27036:27037" ];
   steamUdpRanges = [ "27031:27036" "10400:10401" ];
+  # 跟着 SteamVR 进这个空间的 VR 程序：PaperTracker 的设备往 45454 发数据（见 vr/papertracker.nix）。
+  vrUdpPorts = [ "45454" ];
 
   netnsUp = pkgs.writeShellScript "uu-netns-up" ''
     set -eu
@@ -60,7 +62,7 @@ let
     for ports in ${toString steamTcpRanges}; do
       ns iptables -w -A INPUT -i uuwan0 -p tcp --dport "$ports" -j ACCEPT
     done
-    for ports in ${toString steamUdpRanges}; do
+    for ports in ${toString (steamUdpRanges ++ vrUdpPorts)}; do
       ns iptables -w -A INPUT -i uuwan0 -p udp --dport "$ports" -j ACCEPT
     done
     ns iptables -w -P INPUT DROP

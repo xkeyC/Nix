@@ -14,9 +14,9 @@
 #   * 中文乱码：系统里的 Noto CJK 是 CFF2 可变字体，wine 渲染不了，前缀里放静态字体并设字体替换。
 #   * KDE 两块屏都是 200% 缩放，wine 默认 96 DPI，窗口会缩成一小块，这里设成 192。
 #
-# Steam 用「Steam（UU 加速）」启动时在另一个网络命名空间里，PaperTracker 从普通快捷方式启动即可，
-# 设备的 UDP 由主机防火墙放行。
-{ pkgs, ... }:
+# Steam 用「Steam（UU 加速）」启动时，SteamVR 和 VRChat 在网络命名空间 uu 里，启动器经 steamvr-netns
+# 跟进去（要在 Steam 之后启动）。这时设备的 UDP 45454 由 uu 空间的防火墙放行，见 uuplugin.nix。
+{ pkgs, steamvrNetns, ... }:
 
 let
   installer = pkgs.fetchurl {
@@ -116,7 +116,8 @@ let
       mkdir -p "$shim"
       install -m755 ${vrwatch}/vrwatch.exe "$shim/vrwatch.exe"
       cd "$appdir"
-      exec umu-run 'C:\papertracker-shim\vrwatch.exe' \
+      # 和 SteamVR、VRChat 进同一个网络命名空间：vrclient 桥要连 vrserver，OSC 发往 VRChat 的 127.0.0.1。
+      exec ${steamvrNetns}/bin/steamvr-netns umu-run 'C:\papertracker-shim\vrwatch.exe' \
         'C:\users\steamuser\AppData\Local\Programs\Paper_Tracker\PaperTracker.exe' "$@"
     '';
   };

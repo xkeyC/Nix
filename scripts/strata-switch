@@ -64,7 +64,7 @@ IFS= read -r STRATA_SWITCH_KEY < "$key_file" || [[ -n ${STRATA_SWITCH_KEY:-} ]]
 export STRATA_SWITCH_KEY
 hash=$(printf '%s' "$selected" | sha256sum)
 preset="switch-${hash:0:16}"
-args=(--model-path "$selected" --data-dir "$data_dir" --context 256k --access lan --port 41873 --api-key-env STRATA_SWITCH_KEY --save-preset "$preset" --yes --no-tui "$@")
+args=(--model-path "$selected" --data-dir "$data_dir" --context 256k --vision cpu --access lan --port 41873 --api-key-env STRATA_SWITCH_KEY --save-preset "$preset" --yes --no-tui "$@")
 printf '检查模型：%s\n' "$selected"
 strata launch "${args[@]}" --plan
 for arg in "$@"; do

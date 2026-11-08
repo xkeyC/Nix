@@ -1,4 +1,8 @@
-# PaperTracker：无线面捕/眼追（官方只有 Windows 版），用 GE-Proton（经 umu）运行。
+# PaperTracker：无线面捕/眼追（官方只有 Windows 版），用 Proton（经 umu）运行。
+# 默认用 Steam 库里的 Proton Experimental：GE-Proton11-11 下，PaperTracker 建 SteamVR 叠加层时
+# Proton 的 vrclient 桥断言失败（vroverlay_manual.c:505，前面是调用空函数指针），弹出模态的
+# “Wine C++ Runtime Library”对话框把主线程卡死；同一时刻 vrclient 报取不到
+# GetImageMemoryRequirements2KHR。PAPERTRACKER_PROTON=<Proton 目录> 可临时换别的版本。
 # 菜单里的「PaperTracker」或命令 papertracker 启动；首次启动会自动装进 ~/.local/share/papertracker/pfx。
 # 2026-10-26 在本机用 7.3.28 跑通过，SteamVR 叠加层也能用。下面每条修正都对应当时踩过的坑。
 #
@@ -23,6 +27,9 @@ let
     url = "https://oss2.papertracker.top/client/full/PaperTracker_7.4.0.exe";
     hash = "sha256-02bHxRr0NNZZTMIDkFNzwvfrcyEdgT4/tBojU5ijsd0=";
   };
+
+  # Steam 装在第二个库里的 Proton Experimental（Steam 自己更新它）。
+  protonExperimental = "/mnt/application/SteamLibrary/steamapps/common/Proton - Experimental";
 
   vrwatch = pkgs.runCommand "papertracker-vrwatch" { nativeBuildInputs = [ pkgs.zig ]; } ''
     export XDG_CACHE_HOME=$TMPDIR
@@ -74,17 +81,35 @@ let
 
   papertracker = pkgs.writeShellApplication {
     name = "papertracker";
-    runtimeInputs = [ pkgs.coreutils pkgs.umu-launcher ];
+    runtimeInputs = [ pkgs.coreutils pkgs.findutils pkgs.umu-launcher ];
     text = ''
       data="''${XDG_DATA_HOME:-$HOME/.local/share}/papertracker"
       export WINEPREFIX="$data/pfx"
       export GAMEID=umu-papertracker STORE=none
-      export PROTONPATH=${pkgs.proton-ge-bin.steamcompattool}
-      export PROTON_LOG="''${PROTON_LOG:-1}" PROTON_LOG_DIR="$data/logs"
+      proton="''${PAPERTRACKER_PROTON:-${protonExperimental}}"
+      if [ ! -x "$proton/proton" ]; then
+        echo "papertracker: 找不到 $proton，改用 GE-Proton" >&2
+        proton=${pkgs.proton-ge-bin.steamcompattool}
+      fi
+      export PROTONPATH="$proton"
+
+      # 每次启动的日志单独放一个目录（logs/latest 指向最新一次），保留最近 10 次。
+      # vrwatch 启动时会覆盖前缀里的 vrwatch.log，所以先把上一次的挪进上一次的目录。
+      logs="$data/logs"
+      shim="$WINEPREFIX/drive_c/papertracker-shim"
+      run="$logs/$(date +%Y%m%d-%H%M%S)"
+      mkdir -p "$run"
+      if [ -f "$shim/vrwatch.log" ] && [ -d "$logs/latest" ]; then
+        mv "$shim/vrwatch.log" "$logs/latest/"
+      fi
+      ln -sfn "$run" "$logs/latest"
+      find "$logs" -mindepth 1 -maxdepth 1 -type d -name '20*' | sort | head -n -10 | xargs -r rm -rf
+      echo "papertracker: Proton $(cat "$proton/version" 2>/dev/null || echo "$proton")，日志在 $run" >&2
+      export PROTON_LOG="''${PROTON_LOG:-1}" PROTON_LOG_DIR="$run"
       export XR_RUNTIME_JSON="$data/no-openxr-runtime.json"
-      # GE-Proton 的手柄无障碍助手启动时也会碰 DXVK/OpenXR，这里用不上。
+      # Proton 的手柄无障碍助手启动时也会碰 DXVK/OpenXR，这里用不上。
       export PROTON_USE_XALIA=0
-      mkdir -p "$data/logs"
+      mkdir -p "$logs"
 
       appdir="$WINEPREFIX/drive_c/users/steamuser/AppData/Local/Programs/Paper_Tracker"
       if [ ! -f "$appdir/PaperTracker.exe" ]; then
@@ -112,7 +137,6 @@ let
         [ -L "$link" ] || { rm -rf "$link"; ln -s "$vrchat_locallow" "$link"; }
       fi
 
-      shim="$WINEPREFIX/drive_c/papertracker-shim"
       mkdir -p "$shim"
       install -m755 ${vrwatch}/vrwatch.exe "$shim/vrwatch.exe"
       cd "$appdir"

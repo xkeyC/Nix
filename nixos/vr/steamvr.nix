@@ -76,17 +76,22 @@ let
     '';
   };
 
-  # SteamVR 运行时关掉副屏（竖放的 DP-1），退出后按原布局恢复。两块 4K 屏、XWayland 缩放 2 时
-  # X 根窗口是 6000x3840，在 SteamVR 菜单里点「桌面」会让 Steam 崩溃（见下面 programs.steam 的注释）；
-  # 只剩主屏时是 3840x2790。关之前把 kscreen-doctor -j 的布局存到 ~/.local/state，恢复时用它还原
-  # 副屏的模式、旋转、缩放和每块屏的位置、优先级；注销时 SteamVR 还开着，下次登录也会恢复。
-  # 临时不想要：systemctl --user stop steamvr-single-monitor。
-  steamvrSingleMonitor = pkgs.writeShellApplication {
-    name = "steamvr-single-monitor";
-    runtimeInputs = with pkgs; [ coreutils jq procps kdePackages.libkscreen ];
+  # SteamVR 真正开起来以后要做的事（vrserver 连续存在 5 秒才算：Steam 启动时会拉起 vrserver 又马上退出）：
+  #   * 关掉副屏（竖放的 DP-1），SteamVR 退出后按原布局恢复。两块 4K 屏、XWayland 缩放 2 时 X 根窗口是
+  #     6000x3840，在 SteamVR 菜单里点「桌面」会让 Steam 崩溃（见下面 programs.steam 的注释）；只剩主屏时
+  #     是 3840x2790。关之前把 kscreen-doctor -j 的布局存到 ~/.local/state，恢复时用它还原副屏的模式、
+  #     旋转、缩放和每块屏的位置、优先级；注销时 SteamVR 还开着，下次登录也会恢复。
+  #   * 启动 WayVR（--openvr），放在单独的 systemd 用户单元 wayvr 里：日志看 journalctl --user -u wayvr，
+  #     本服务重启也不会带走它。SteamVR 退出时 WayVR 自己退出。每次 SteamVR 只拉起一次，中途手动关掉
+  #     WayVR 不会再被拉起。
+  # 临时不想要：systemctl --user stop steamvr-hooks。
+  steamvrHooks = pkgs.writeShellApplication {
+    name = "steamvr-hooks";
+    runtimeInputs = with pkgs; [ coreutils jq procps systemd kdePackages.libkscreen ];
     text = ''
       output=DP-1
-      state="''${XDG_STATE_HOME:-$HOME/.local/state}/steamvr-single-monitor/layout.json"
+      settle=5
+      state="''${XDG_STATE_HOME:-$HOME/.local/state}/steamvr-hooks/layout.json"
       mkdir -p "$(dirname "$state")"
 
       rotation_name() {
@@ -96,36 +101,66 @@ let
         esac
       }
 
-      restore() {
-        if ! kscreen-doctor -j | jq -e --arg o "$output" '.outputs[] | select(.name == $o and .connected)' >/dev/null; then
-          echo "$output 未连接，放弃恢复"
-          return 0
-        fi
-        local args=() name x y rot scale mode prio
-        while read -r name x y rot scale mode prio; do
-          if [ "$name" = "$output" ]; then
-            args+=("output.$name.enable" "output.$name.mode.$mode" "output.$name.rotation.$(rotation_name "$rot")" "output.$name.scale.$scale")
-          fi
-          args+=("output.$name.position.$x,$y" "output.$name.priority.$prio")
-        done < <(jq -r '.outputs[] | select(.connected and .enabled)
-          | "\(.name) \(.pos.x) \(.pos.y) \(.rotation) \(.scale) \(.currentModeId) \(.priority)"' "$state")
-        kscreen-doctor "''${args[@]}"
-        echo "SteamVR 已退出，恢复 $output"
+      output_is() { # $1 = jq condition on the output
+        kscreen-doctor -j | jq -e --arg o "$output" ".outputs[] | select(.name == \$o and $1)" >/dev/null
       }
 
-      while true; do
-        if pgrep -x -u "$(id -u)" vrserver >/dev/null; then
-          if [ ! -f "$state" ] &&
-            kscreen-doctor -j | jq -e --arg o "$output" '.outputs[] | select(.name == $o and .connected and .enabled)' >/dev/null; then
-            kscreen-doctor -j > "$state.tmp"
-            mv "$state.tmp" "$state"
-            kscreen-doctor "output.$output.disable"
-            echo "SteamVR 已启动，关闭 $output"
-          fi
-        elif [ -f "$state" ]; then
-          restore && rm -f "$state"
+      disable_output() {
+        [ -f "$state" ] && return 0
+        output_is '.connected and .enabled' || return 0
+        kscreen-doctor -j > "$state.tmp"
+        mv "$state.tmp" "$state"
+        kscreen-doctor "output.$output.disable"
+        echo "关闭 $output"
+      }
+
+      restore_output() {
+        [ -f "$state" ] || return 0
+        if output_is '.connected'; then
+          local args=() name x y rot scale mode prio
+          while read -r name x y rot scale mode prio; do
+            if [ "$name" = "$output" ]; then
+              args+=("output.$name.enable" "output.$name.mode.$mode" "output.$name.rotation.$(rotation_name "$rot")" "output.$name.scale.$scale")
+            fi
+            args+=("output.$name.position.$x,$y" "output.$name.priority.$prio")
+          done < <(jq -r '.outputs[] | select(.connected and .enabled)
+            | "\(.name) \(.pos.x) \(.pos.y) \(.rotation) \(.scale) \(.currentModeId) \(.priority)"' "$state")
+          kscreen-doctor "''${args[@]}" || return 1
+          echo "恢复 $output"
+        else
+          echo "$output 未连接，放弃恢复"
         fi
-        sleep 2
+        rm -f "$state"
+      }
+
+      start_wayvr() {
+        if systemctl --user is-active --quiet wayvr.service; then
+          return 0
+        fi
+        systemctl --user reset-failed wayvr.service 2>/dev/null || true
+        systemd-run --user --unit=wayvr --collect --quiet \
+          --description="WayVR (started with SteamVR)" ${wayvr}/bin/wayvr --openvr
+        echo "启动 WayVR"
+      }
+
+      seen_pid="" seen_at=0 handled=""
+      while true; do
+        pid=$(pgrep -o -x -u "$(id -u)" vrserver || true)
+        if [ -n "$pid" ]; then
+          now=$(date +%s)
+          if [ "$pid" != "$seen_pid" ]; then
+            seen_pid=$pid seen_at=$now
+          elif [ "$handled" != "$pid" ] && [ $((now - seen_at)) -ge "$settle" ]; then
+            echo "SteamVR 已运行 $settle 秒（vrserver $pid）"
+            disable_output || true
+            start_wayvr || true
+            handled=$pid
+          fi
+        else
+          seen_pid="" handled=""
+          restore_output || true
+        fi
+        sleep 1
       done
     '';
   };
@@ -154,7 +189,7 @@ in
   environment.systemPackages = [
     steamvrNetns
     # WayVR：VR 里的桌面叠加层（屏幕、键盘、手腕面板），支持 OpenVR（SteamVR）和 OpenXR。
-    # 上游因为 SteamVR 的 bug 不再注册自动启动，要在 SteamVR 起来后手动运行 wayvr。
+    # 上游因为 SteamVR 的 bug 不再注册自动启动，这里由 steamvr-hooks 在 SteamVR 起来后启动。
     # 首次启动 KDE 会弹出屏幕共享框，按通知里提示的顺序选择屏幕。经 steamvr-netns 启动。
     wayvr
     vrmonitorUrlHandler
@@ -208,13 +243,13 @@ in
   # dlopen 会搜索调用者的 RUNPATH（$ORIGIN/../../../../bin/linux64，即 SteamVR/bin/linux64），
   # 所以在那里放一个指向容器内 libcrypto.so.1.1 的链接。目标路径只在 sniper 容器里存在，宿主上看是断链。
   # 若 SteamVR 换成 Steam Linux Runtime 4（libcrypto.so.3），这里要跟着改。
-  systemd.user.services.steamvr-single-monitor = {
-    description = "Turn off the secondary monitor while SteamVR runs";
+  systemd.user.services.steamvr-hooks = {
+    description = "Turn off the secondary monitor and start WayVR while SteamVR runs";
     wantedBy = [ "graphical-session.target" ];
     partOf = [ "graphical-session.target" ];
     after = [ "graphical-session.target" ];
     serviceConfig = {
-      ExecStart = "${steamvrSingleMonitor}/bin/steamvr-single-monitor";
+      ExecStart = "${steamvrHooks}/bin/steamvr-hooks";
       Restart = "on-failure";
       RestartSec = 5;
     };

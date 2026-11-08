@@ -15,9 +15,9 @@ nixos/
   *.nix                   按主题划分的系统模块，见下表
   packages/               自己打包的软件和补丁
   ai/                     本地 AI 服务（Strata），自己的打包在 ai/packages/
-  vr/                     VR：SteamVR + Steam Link、WayVR、PaperTracker，自己的打包在 vr/packages/
+  vr/                     VR：SteamVR + Steam Link、WayVR、PaperTracker、VIVE Hub，自己的打包在 vr/packages/
 home/xkeyc.nix            用户 xkeyc 的 Home Manager 配置
-archive/vr/               已存档的 VR 配置（ALVR、Monado、WiVRn、VIVE Hub），不参与构建
+archive/vr/               已存档的 VR 配置（ALVR、Monado、WiVRn），不参与构建
 private.example/          隐私配置的模板（真正的 private/ 不进 git）
 ```
 
@@ -52,6 +52,7 @@ private.example/          隐私配置的模板（真正的 private/ 不进 git�
 | `browser-hdr-video.nix` | Brave 播放 HDR 视频：给 KWin 打补丁，不再截掉 Chromium 的 HDR 高光；Brave 开 NVIDIA VA-API 硬解（B 站 HEVC / HDR） |
 | `flclash-tun.nix` | FlClash 代理 TUN 模式需要的特权服务 |
 | `vr/steamvr.nix` | SteamVR 与 Steam Link VR：防火墙端口、vrlink 的 OpenSSL、SteamVR 仪表盘依赖；WayVR 桌面叠加层 |
+| `vr/vivehub.nix` | VIVE Hub：VIVE Ultimate Tracker 的配对、建图和姿态 SDK，含 dongle 的 udev 权限规则 |
 | `vr/papertracker.nix` | PaperTracker 面捕/眼追，用 GE-Proton 运行，首次启动自动安装 |
 | `ai/strata.nix` | Strata 本地大模型服务（OpenAI / Anthropic 兼容 API），局域网可访问，需要手动启动 |
 
@@ -87,9 +88,9 @@ nixpkgs 里没有，或者 nixpkgs 的版本不能用的软件，在本仓库里
 | [FlClash](https://github.com/chen08209/FlClash) | 0.9.2 | Clash Meta 代理客户端 | nixpkgs 没有 |
 | [Strata](https://github.com/Niko1221/Strata) | 0.2.8（control 0.1.54） | 在本机运行大模型，提供 OpenAI / Anthropic 兼容 API | nixpkgs 没有；上游只提供安装脚本 |
 | [ALVR](https://github.com/alvr-org/ALVR) | 21.0.0-dev | 把 SteamVR 画面无线串流到 VR 一体机（已存档） | nixpkgs 的 20.14.1 和新版 SteamVR 不兼容，这里用开发版并加了补丁 |
-| [VIVE Hub](https://github.com/ViveRoboticsSoftware/vivehub-linux) | 1.0.3 | VIVE Ultimate Tracker 的配对和建图工具（已存档） | nixpkgs 没有；上游只有闭源预编译包 |
+| [VIVE Hub](https://github.com/ViveRoboticsSoftware/vivehub-linux) | 1.0.3 | VIVE Ultimate Tracker 的配对和建图工具，带姿态 SDK | nixpkgs 没有；上游只有闭源预编译包 |
 
-打包文件在 `nixos/packages/` 和 `nixos/ai/packages/`；已存档的 VR 软件在 `archive/vr/packages/`，不参与构建，恢复方法见 `archive/vr/default.nix` 开头。
+打包文件在 `nixos/packages/`、`nixos/vr/packages/` 和 `nixos/ai/packages/`；已存档的 VR 软件在 `archive/vr/packages/`，不参与构建，恢复方法见 `archive/vr/default.nix` 开头。
 
 另外有四份外部源码直接从 GitHub 引用（定义在 `flake.nix`，锁定到固定提交）：
 

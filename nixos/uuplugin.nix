@@ -29,6 +29,11 @@ let
   # App 通过这些端口发现和绑定设备（ss 实测，与 AUR 评论一致）。
   tcpPorts = [ 14554 16363 ];
   udpPorts = [ 16363 ];
+  # Steam 在这个空间里运行时，主机防火墙对它不起作用，Steam Link（含 VR）要的端口得在这里放行：
+  # 远程同乐局域网发现 UDP 27031-27036、TCP 27036-27037，vrlink 串流 UDP 10400-10401。
+  # 与 gaming / steamvr.nix 里主机防火墙开放的端口保持一致。
+  steamTcpRanges = [ "27036:27037" ];
+  steamUdpRanges = [ "27031:27036" "10400:10401" ];
 
   netnsUp = pkgs.writeShellScript "uu-netns-up" ''
     set -eu
@@ -41,7 +46,7 @@ let
     # 只走 IPv4，避免游戏的 IPv6 流量绕过 UU。
     ns sysctl -q -w net.ipv6.conf.all.disable_ipv6=1 net.ipv6.conf.default.disable_ipv6=1
 
-    # 主机防火墙管不到这个空间，这里只放行回包、DHCP 和绑定端口。
+    # 主机防火墙管不到这个空间，这里只放行回包、DHCP、绑定端口和 Steam Link 端口。
     # UU 启动后会自己插入 TUN 网卡的放行规则。
     ns iptables -w -A INPUT -i lo -j ACCEPT
     ns iptables -w -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
@@ -51,6 +56,12 @@ let
     done
     for port in ${toString udpPorts}; do
       ns iptables -w -A INPUT -i uuwan0 -p udp --dport "$port" -j ACCEPT
+    done
+    for ports in ${toString steamTcpRanges}; do
+      ns iptables -w -A INPUT -i uuwan0 -p tcp --dport "$ports" -j ACCEPT
+    done
+    for ports in ${toString steamUdpRanges}; do
+      ns iptables -w -A INPUT -i uuwan0 -p udp --dport "$ports" -j ACCEPT
     done
     ns iptables -w -P INPUT DROP
     ns iptables -w -P FORWARD DROP

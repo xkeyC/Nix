@@ -126,11 +126,20 @@ in
     # libatk-bridge-2.0 / libatk-1.0 / libatspi，vrwebhelper 一启动就报
     # “error while loading shared libraries: libatk-bridge-2.0.so.0”退出。补上之后还缺 NSS：
     # Steam Runtime（scout）自带的 libnss3 太旧（libcef 要 NSS_3.30+），宿主有更新的会优先用宿主的。
+    #
+    # pactl：Steam 开始串流时用它设置音频，FHS 环境里没有，日志里刷满“pactl: 未找到命令”。
     extraPackages = with pkgs; [
       at-spi2-core
       nss
       nspr
+      pulseaudio
     ];
+
+    # Steam Link VR 连上后 Steam 会开始桌面串流（console-linux.txt 里是“>>> Starting desktop stream”）。
+    # Wayland 下不加 -pipewire 就没有桌面捕获（“Desktop capture unavailable, try running Steam with
+    # -pipewire”），紧接着 steamui.so 的串流线程在 memset 里段错误，Steam 整个崩溃，SteamVR 跟着退出
+    # （10/26、11/08 17:56、20:43 各一次）。加上后经 xdg-desktop-portal 的屏幕录制捕获桌面。
+    package = pkgs.steam.override { extraArgs = "-pipewire"; };
   };
 
   # vrlink 的串流端口（vrlink 日志 driver_vrlink.txt 里是 “Socket bound to port 10400”）。

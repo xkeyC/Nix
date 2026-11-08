@@ -30,6 +30,11 @@
     ];
   };
 
+  # WayVR：VR 里的桌面叠加层（屏幕、键盘、手腕面板），支持 OpenVR（SteamVR）和 OpenXR。
+  # 上游因为 SteamVR 的 bug 不再注册自动启动，要在 SteamVR 起来后手动运行 wayvr。
+  # 首次启动 KDE 会弹出屏幕共享框，按通知里提示的顺序选择屏幕。
+  environment.systemPackages = [ pkgs.wayvr ];
+
   # vrlink 的串流端口（vrlink 日志 driver_vrlink.txt 里是 “Socket bound to port 10400”）。
   networking.firewall.allowedUDPPortRanges = [ { from = 10400; to = 10401; } ];
 

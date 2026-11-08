@@ -13,6 +13,10 @@
 #     - 建图向导：Unity 6000.0.75，播放器带 Wayland/libdecor，但要加 -force-wayland。Hub 启动向导前会读
 #       TRACKER_SETUP_BIN，这里指向一个加了该参数的包装脚本，向导本体不动（它按 /proc/self/exe 找数据目录）。
 #     出问题时用 VIVEHUB_X11=1 vivehub 退回 XWayland。
+#   * tracker_server 的 socket 写死在 /tmp/vut.sock。SteamVR 驱动跑在 Steam 的沙箱（私有 /tmp）和
+#     pressure-vessel 里，看不到宿主的 /tmp。这里把 VIVE Hub 环境里的 /tmp 换成
+#     ~/.local/state/vivehub/tmp，socket 就在 ~/.local/state/vivehub/tmp/vut.sock，各处都能访问 home。
+#     宿主的 /tmp/.X11-unix 再单独绑回来，XWayland 模式照常可用。
 #   * 日志、trackers.json 在 ~/.local/share/HTC/VIVEUltimateTracker/。
 { lib
 , stdenvNoCC
@@ -108,6 +112,14 @@ buildFHSEnv {
     fi
     exec ./vivehub "$@"
   '';
+
+  extraPreBwrapCmds = ''
+    mkdir -p "''${XDG_STATE_HOME:-$HOME/.local/state}/vivehub/tmp"
+  '';
+  extraBwrapArgs = [
+    ''--bind "''${XDG_STATE_HOME:-$HOME/.local/state}/vivehub/tmp" /tmp''
+    "--bind-try /tmp/.X11-unix /tmp/.X11-unix"
+  ];
 
   extraInstallCommands = ''
     install -Dm644 ${desktopItem}/share/applications/vivehub.desktop \

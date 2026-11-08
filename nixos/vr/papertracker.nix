@@ -34,7 +34,7 @@ let
   vrwatch = pkgs.runCommand "papertracker-vrwatch" { nativeBuildInputs = [ pkgs.zig ]; } ''
     export XDG_CACHE_HOME=$TMPDIR
     mkdir -p $out
-    zig cc -target x86_64-windows-gnu -municode -O2 -o $out/vrwatch.exe ${./packages/papertracker/vrwatch.c}
+    zig cc -target x86_64-windows-gnu -municode -Wl,--subsystem,windows -O2 -o $out/vrwatch.exe ${./packages/papertracker/vrwatch.c}
   '';
 
   fonts = [

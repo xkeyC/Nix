@@ -12,9 +12,12 @@
  *
  * 用法：vrwatch.exe <PaperTracker.exe> [参数...]
  *       vrserver.exe --placeholder      （由本程序自行拉起，只是睡眠）
+ *
+ * 编译成 GUI 子系统程序（--subsystem,windows，入口 wWinMain），本程序和占位进程都不会弹出控制台窗口。
  */
 #include <windows.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
 
@@ -219,4 +222,14 @@ int wmain(int argc, wchar_t **argv)
         if (dummy[i]) TerminateProcess(dummy[i], 0);
     logmsg("PaperTracker exited with %lu", code);
     return (int)code;
+}
+
+/* GUI 子系统的入口：命令行仍按 wmain 的方式交给上面处理 */
+int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR cmd, int show)
+{
+    (void)inst;
+    (void)prev;
+    (void)cmd;
+    (void)show;
+    return wmain(__argc, __wargv);
 }

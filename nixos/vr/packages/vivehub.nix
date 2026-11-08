@@ -7,10 +7,17 @@
 #   * “Start setup”打开的建图向导是 Unity 播放器，运行时会 dlopen 一大串 X11/Wayland/
 #     GL/Vulkan/音频库。逐个 patchelf 容易遗漏，这里把原样文件放进 store，用 FHS 环境运行。
 #   * 界面的 imgui.ini 写在安装目录（只读），窗口布局不会保存，不影响功能。
+#   * 默认原生 Wayland，KDE 200% 缩放下不再是 XWayland 的模糊画面：
+#     - 界面：随包的 GLFW 3.3.2 只有 X11，换成 nixpkgs 的 GLFW 3.4（ABI 兼容），它按 XDG_SESSION_TYPE
+#       自动选 Wayland 或 X11。
+#     - 建图向导：Unity 6000.0.75，播放器带 Wayland/libdecor，但要加 -force-wayland。Hub 启动向导前会读
+#       TRACKER_SETUP_BIN，这里指向一个加了该参数的包装脚本，向导本体不动（它按 /proc/self/exe 找数据目录）。
+#     出问题时用 VIVEHUB_X11=1 vivehub 退回 XWayland。
 #   * 日志、trackers.json 在 ~/.local/share/HTC/VIVEUltimateTracker/。
 { lib
 , stdenvNoCC
 , fetchurl
+, glfw
 , buildFHSEnv
 , makeDesktopItem
 , writeShellScript
@@ -39,6 +46,10 @@ let
     # 闭源二进制原样保留（Unity 播放器对改动 ELF 很敏感）。
     dontFixup = true;
   };
+
+  setupWayland = writeShellScript "tracker-setup-wayland" ''
+    exec ${unwrapped}/share/vivehub/tracker_setup/TrackerSetup_build_linux/tracker_setup.x86_64 -force-wayland "$@"
+  '';
 
   desktopItem = makeDesktopItem {
     name = "vivehub";
@@ -71,8 +82,9 @@ buildFHSEnv {
     libxscrnsaver
     libxxf86vm
     libxkbcommon
-    # Wayland 与随包 libdecor-cairo
+    # Wayland 与随包 libdecor-cairo（GLFW 3.4 用系统的 libdecor）
     wayland
+    libdecor
     cairo
     pango
     glib
@@ -87,7 +99,13 @@ buildFHSEnv {
 
   runScript = writeShellScript "vivehub-launch" ''
     cd ${unwrapped}/share/vivehub || exit 1
-    export LD_LIBRARY_PATH="${unwrapped}/share/vivehub/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    # GLFW 3.4 排在随包库前面，随包的 libhidapi-hidraw 照常使用。
+    export LD_LIBRARY_PATH="${glfw}/lib:${unwrapped}/share/vivehub/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    if [ -n "''${VIVEHUB_X11:-}" ]; then
+      export XDG_SESSION_TYPE=x11
+    else
+      export TRACKER_SETUP_BIN=${setupWayland}
+    fi
     exec ./vivehub "$@"
   '';
 

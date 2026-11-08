@@ -64,7 +64,7 @@ IFS= read -r STRATA_SWITCH_KEY < "$key_file" || [[ -n ${STRATA_SWITCH_KEY:-} ]]
 export STRATA_SWITCH_KEY
 hash=$(printf '%s' "$selected" | sha256sum)
 preset="switch-${hash:0:16}"
-args=(--model-path "$selected" --data-dir "$data_dir" --access lan --port 41873 --api-key-env STRATA_SWITCH_KEY --save-preset "$preset" --yes --no-tui "$@")
+args=(--model-path "$selected" --data-dir "$data_dir" --context 256k --access lan --port 41873 --api-key-env STRATA_SWITCH_KEY --save-preset "$preset" --yes --no-tui "$@")
 printf '检查模型：%s\n' "$selected"
 strata launch "${args[@]}" --plan
 for arg in "$@"; do
@@ -73,5 +73,12 @@ done
 if systemctl --user is-active --quiet strata.service; then
   printf '停止现有 strata.service，交由 Strata launch 管理新模型。\n'
   systemctl --user stop strata.service
+fi
+# Strata 的 --restart 不会重启参数完全相同的实例，因此先停止本脚本的目标 preset。
+stop_result=$(strata launch --preset "$preset" --stop)
+printf '%s\n' "$stop_result"
+if [[ $stop_result == *'Could not stop '* ]]; then
+  printf '无法停止现有实例，取消启动。\n' >&2
+  exit 1
 fi
 exec strata launch "${args[@]}" --restart

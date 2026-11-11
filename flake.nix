@@ -2,10 +2,20 @@
   description = "xkeyc 的 NixOS 配置（KDE Plasma + Fcitx5/RIME 雾凇拼音 + FlClash + Home Manager）";
 
   inputs = {
-    # 与当前 nixos channel 相同的 nixpkgs 提交
-    # （nixos-version = 26.11.20261103.1d06008）。
+    # 与当前 nixos-unstable channel 相同的 nixpkgs 提交
+    # （nixos-version = 26.11.20261107.f4a03c0）。
     # 升级 nixpkgs：`nix flake update nixpkgs`，然后 `sudo nixos-rebuild switch`。
-    nixpkgs.url = "github:NixOS/nixpkgs/1d060086d60cb76a40cf37109f979d88a5bd6396";
+    nixpkgs.url = "github:NixOS/nixpkgs/f4a03c008967841f2a0b3cb7c436fc6fc31671f6";
+
+    # 只用来取比 nixos-unstable 新的个别包：configuration.nix 读这里的 kernels-org.json，同一分支上比 nixos-unstable 新就用它的
+    # 版本号和 hash（内核本来就因 ntfs 补丁在本地编译，channel 落后时不用干等）；home-manager.nix 的 codex 同理。
+    # 其余包仍来自上面的 nixpkgs，有 cache。
+    # 升级：把提交号换成 master 最新提交（git ls-remote https://github.com/NixOS/nixpkgs refs/heads/master），
+    # 再执行 `nix flake update nixpkgs-master`。
+    nixpkgs-master = {
+      url = "github:NixOS/nixpkgs/4563b5d1c75e16d35f8beec24404078c28a518ea";
+      flake = false;
+    };
 
     # Star Citizen 的 Wine 环境和 RSI Launcher。
     nix-citizen.url = "github:LovingMelody/nix-citizen";
@@ -44,7 +54,7 @@
     # FlydigiLinux：飞智手柄力回馈扳机（官方 mod）与 DS 模式，打包和 NixOS 模块在它自己的 flake 里。
     # 升级：修改 url 里的提交号，再执行 `nix flake update flydigi-linux`。
     flydigi-linux = {
-      url = "github:xkeyC/FlydigiLinux/7ace79819abb6983053e81953bf04a782c53ebe5";
+      url = "github:xkeyC/FlydigiLinux/4b11ab344007b14da04ce60c05afb08868dbad02";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

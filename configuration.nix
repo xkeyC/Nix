@@ -2,8 +2,16 @@
 # your system. Help is available in the configuration.nix(5) man page, on
 # https://search.nixos.org/options and in the NixOS manual (`nixos-help`).
 
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, inputs, ... }:
 
+let
+  # 内核版本取 nixpkgs master（见 flake.nix 的 nixpkgs-master）：只在同一分支、且 master 更新时覆盖
+  # nixos-unstable 的 linux_latest；unstable 追上或换了分支就自动回到 unstable 自己的版本。
+  unstableKernel = pkgs.linuxPackages_latest.kernel;
+  masterKernels = lib.importJSON "${inputs.nixpkgs-master}/pkgs/os-specific/linux/kernel/kernels-org.json";
+  masterKernel = masterKernels.${unstableKernel.meta.branch} or null;
+  useMasterKernel = masterKernel != null && lib.versionOlder unstableKernel.version masterKernel.version;
+in
 {
   imports =
     [ # Include the results of the hardware scan.
@@ -17,9 +25,18 @@
 
   # Use latest kernel, compiled with ccache (nixos/ccache.nix): the ntfs patches in
   # nixos/packages/ntfs/ rule out the binary cache, so the kernel is always built locally.
-  boot.kernelPackages = pkgs.linuxPackagesFor (pkgs.linuxPackages_latest.kernel.override {
+  boot.kernelPackages = pkgs.linuxPackagesFor (unstableKernel.override ({
     stdenv = pkgs.ccacheStdenv;
-  });
+  } // lib.optionalAttrs useMasterKernel {
+    argsOverride = {
+      inherit (masterKernel) version;
+      modDirVersion = lib.versions.pad 3 masterKernel.version;
+      src = pkgs.fetchurl {
+        url = "mirror://kernel/linux/kernel/v${lib.versions.major masterKernel.version}.x/linux-${masterKernel.version}.tar.xz";
+        inherit (masterKernel) hash;
+      };
+    };
+  }));
 
   # networking.hostName = "nixos"; # Define your hostname.
 

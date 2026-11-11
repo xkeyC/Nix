@@ -115,17 +115,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1793816624,
-        "narHash": "sha256-4CdJQBAUaYuA5hmnaXY3GkTKygEi4vqhCFSbAfnMhVs=",
+        "lastModified": 1794405988,
+        "narHash": "sha256-uKyNQfruYwiwgRQi8QYH+xO63ek+PKewIXhCgsyWqUg=",
         "owner": "xkeyC",
         "repo": "FlydigiLinux",
-        "rev": "7ace79819abb6983053e81953bf04a782c53ebe5",
+        "rev": "4b11ab344007b14da04ce60c05afb08868dbad02",
         "type": "github"
       },
       "original": {
         "owner": "xkeyC",
         "repo": "FlydigiLinux",
-        "rev": "7ace79819abb6983053e81953bf04a782c53ebe5",
+        "rev": "4b11ab344007b14da04ce60c05afb08868dbad02",
         "type": "github"
       }
     },
@@ -272,19 +272,36 @@
         "type": "github"
       }
     },
-    "nixpkgs_2": {
+    "nixpkgs-master": {
+      "flake": false,
       "locked": {
-        "lastModified": 1793726008,
-        "narHash": "sha256-jQp1wKvbwWdLBASTXkSi/VYmDJ5AbBi1WvcMt9HWJC8=",
+        "lastModified": 1794404524,
+        "narHash": "sha256-TjRTv+rif7agdEjNfv7lKUsyYNNDUQIuRY5PB97F5qI=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "1d060086d60cb76a40cf37109f979d88a5bd6396",
+        "rev": "4563b5d1c75e16d35f8beec24404078c28a518ea",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "1d060086d60cb76a40cf37109f979d88a5bd6396",
+        "rev": "4563b5d1c75e16d35f8beec24404078c28a518ea",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1794042290,
+        "narHash": "sha256-ziZn2PvCJE5JEEpqTdxXwJpPB+L3YqoCpTAMCzyaP3U=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "f4a03c008967841f2a0b3cb7c436fc6fc31671f6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "f4a03c008967841f2a0b3cb7c436fc6fc31671f6",
         "type": "github"
       }
     },
@@ -312,6 +329,7 @@
         "linuxqq-wayland-fix": "linuxqq-wayland-fix",
         "nix-citizen": "nix-citizen",
         "nixpkgs": "nixpkgs_2",
+        "nixpkgs-master": "nixpkgs-master",
         "private": "private"
       }
     },

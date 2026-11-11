@@ -12,6 +12,14 @@
 let
   flclash = pkgs.callPackage ./packages/flclash.nix { };
 
+  # nixos-unstable 的 codex 0.167.0 编译失败（nixpkgs#585124：cargoSetupHook 强制用系统 AWS-LC，包里没给），
+  # master 的 0.167.1 已修且有 cache。unstable 的版本比 master 旧时取 master 的，追上后自动回到 unstable。
+  masterPkgs = import inputs.nixpkgs-master {
+    inherit (pkgs.stdenv.hostPlatform) system;
+    config.allowUnfree = true;
+  };
+  codex = if lib.versionOlder pkgs.codex.version masterPkgs.codex.version then masterPkgs.codex else pkgs.codex;
+
   # QQ 的聊天记录在 /mnt/data 上（~/.config/QQ 里的 nt_qq_*、global 是指过去的符号链接）。
   # 如果在盘没有挂载时启动，QQ 会把目录创建在根分区的空挂载点里，挂载后这些目录被覆盖，聊天记录看起来就“丢失”了。
   # 修复包使用系统的 nixpkgs 和 QQ，避免引入另一套运行时依赖。
@@ -63,7 +71,7 @@ in
         qq
         flclash
         pkgs.claude-code
-        pkgs.codex
+        codex
       ];
     }
   ];

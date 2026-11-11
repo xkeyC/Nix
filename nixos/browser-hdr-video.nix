@@ -1,4 +1,5 @@
 # 浏览器（Brave）里的 HDR 视频：YouTube 高光不被截掉，B 站能选 HDR。
+# Brave 本身已从 nixpkgs 删除，打包在 packages/brave/ 自行维护（升级见那里的 default.nix）。
 #
 # KWin 补丁（packages/kwin-pq-max-cll.patch）：
 #   Chromium 在 HDR 显示器上把整个窗口声明为 PQ（参考白 = 显示器的 SDR 白，这里约 194 nits），
@@ -23,7 +24,7 @@ let
   });
 
   # make-brave.nix 自己也加了一个 --enable-features，Chromium 只认最后一个，所以要带上它原有的几项。
-  brave = (pkgs.brave.override {
+  brave = ((import ./packages/brave { inherit (pkgs) callPackage; }).override {
     commandLineArgs = "--enable-features=" + lib.concatStringsSep "," [
       "AcceleratedVideoDecodeLinuxGL"
       "AcceleratedVideoEncoder"

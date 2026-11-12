@@ -8,6 +8,10 @@
     enableQt5Integration = true;
   };
   programs.xwayland.enable = true;
+  programs.obs-studio = {
+    enable = true;
+    package = pkgs.obs-studio.override { cudaSupport = true; };
+  };
   environment.sessionVariables.NIXOS_OZONE_WL = "1";
 
   fonts.packages = with pkgs; [

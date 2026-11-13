@@ -38,4 +38,19 @@
 
   # 启用 flakes（nixos-rebuild 调用 nix 时会自带 nix-command/flakes 参数）。
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
+
+  # 仅连接 Tailnet 节点；不接收子网路由或 DNS，也不使用或发布出口节点。
+  # Tailscale 只为节点添加路由，普通流量继续遵循 FlClash 的策略路由。
+  services.tailscale = {
+    enable = true;
+    openFirewall = true; # 允许 UDP 41641，供节点建立直连
+    useRoutingFeatures = "none";
+    extraSetFlags = [
+      "--accept-dns=false"
+      "--accept-routes=false"
+      "--exit-node="
+      "--advertise-exit-node=false"
+      "--advertise-routes="
+    ];
+  };
 }

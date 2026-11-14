@@ -49,6 +49,9 @@ in
     wantedBy = [ "graphical-session.target" ];
     partOf = [ "graphical-session.target" ];
     after = [ "graphical-session.target" ];
+    # 用户服务的 PATH 只有 coreutils/systemd 等。pactl/parec：静音、虚拟音频、手柄麦克风；
+    # wpctl：静音；kscreen-doctor：KDE 隐私屏（关物理屏、切到虚拟输出）。
+    path = [ pkgs.pulseaudio pkgs.wireplumber pkgs.kdePackages.libkscreen ];
     environment = {
       RUST_LOG = "info";
       # 只共享一块显示器（补丁功能，见 packages/uu-remote-linux.nix）。序号对应日志里的

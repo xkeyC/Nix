@@ -35,25 +35,26 @@
 , pciutils
 }:
 
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "uu-remote-linux";
-  version = "0.2.41-unstable-2026-10-30";
+  version = "0.2.59";
 
   src = fetchFromGitHub {
     owner = "VallierDev";
     repo = "uu-remote-linux";
-    rev = "6bf05a6361e58dbeec5846f044d234bed04fcf02";
-    hash = "sha256-PR1ZyVJJmuRtjBPbraWq88+K4F2ixH1ak4Fb5+NFDwk=";
+    rev = "v${version}";
+    hash = "sha256-kZrcZJMe7MGib6O187QtDrdrn0hoa1RnYai5p84B5z4=";
   };
 
   # KDE 的远程控制 portal 不弹出屏幕选择框，多屏时直接把整个工作区拼成一路画面。
   # 补丁新增 UU_PORTAL_MONITOR=<序号>：按显示器分别请求画面流，只采集其中一块（绝对坐标的鼠标事件上游已改为发送到该 portal 流）。
+  # 只对真实显示器生效；隐私屏用的虚拟输出（source type 4）仍是单路画面。
   # UU_PORTAL_MONITOR_CMD=<命令>：命令输出 x,y 时选坐标相同的流，失败时才用序号。
-  # 控制端用 `fc-match sans-serif:lang=zh-cn` 找界面字体，lang 压不过 family：本机返回只有拉丁字母的 Noto Sans，
-  # 串流后的菜单里中文全是方块。补丁在查询里加上 charset=4e2d（必须含「中」字），并优先 Noto Sans CJK SC（否则同一 ttc 里先挑到 KR）。
+  # 控制端找界面字体时上游已要求含「控」字（charset=63a7），但同一个 Noto CJK ttc 里各语言字形并列，
+  # 本机会先挑到 KR。补丁在查询前加上 Noto Sans CJK SC。
   patches = [ ./uu-remote-linux-portal-monitor.patch ./uu-remote-linux-viewer-cjk-font.patch ];
 
-  # 上游 Cargo.lock 的副本（与 rev 一致；升级 rev 时一并替换）。
+  # 上游 Cargo.lock 的副本（与 rev 一致；升级时一并替换）。
   cargoLock.lockFile = ./uu-remote-linux.Cargo.lock;
 
   buildFeatures = [ "wayland" "portal" "native-viewer" "viewer-sdl" ];

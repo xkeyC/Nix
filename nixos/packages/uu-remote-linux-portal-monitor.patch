@@ -1,8 +1,8 @@
 diff --git a/c_engine/portal_engine.c b/c_engine/portal_engine.c
-index 71eaa4a..0b1da35 100644
+index e49ae1d..379b82a 100644
 --- a/c_engine/portal_engine.c
 +++ b/c_engine/portal_engine.c
-@@ -370,6 +370,28 @@ static int wait_for_first_frame(struct uu_portal *p) {
+@@ -585,6 +585,28 @@ static int wait_for_first_frame(struct uu_portal *p) {
      pthread_mutex_unlock(&p->lock);
      return result;
  }
@@ -31,13 +31,13 @@ index 71eaa4a..0b1da35 100644
  static int read_stream_result(struct uu_portal *p, GVariant *results) {
      guint devices = 0;
      GVariant *streams = g_variant_lookup_value(results, "streams", G_VARIANT_TYPE("a(ua{sv})"));
-@@ -377,11 +399,35 @@ static int read_stream_result(struct uu_portal *p, GVariant *results) {
+@@ -592,11 +614,35 @@ static int read_stream_result(struct uu_portal *p, GVariant *results) {
      fprintf(stderr, "Portal authorization result: devices_present=%d device_bits=%u stream_count=%zu\n",
          has_devices, devices, streams ? (size_t)g_variant_n_children(streams) : 0);
      int error = 0;
 -    if (!has_devices || (devices & 3) != 3 || !streams || g_variant_n_children(streams) != 1) {
-+    int monitor = portal_monitor_index();
 +    size_t count = streams ? g_variant_n_children(streams) : 0;
++    int monitor = count > 1 ? portal_monitor_index() : -1;
 +    int want_x = 0, want_y = 0, by_position = monitor >= 0 && portal_monitor_position(&want_x, &want_y), matched = 0;
 +    for (size_t i = 0; by_position && i < count; i++) {
 +        GVariant *entry = g_variant_get_child_value(streams, i), *properties; guint node;
@@ -69,12 +69,13 @@ index 71eaa4a..0b1da35 100644
          g_variant_get(entry, "(u@a{sv})", &p->node, &properties);
          /* Optional 'size' is compositor logical coordinates, not frame pixels. */
          g_variant_lookup(properties, "size", "(ii)", &p->logical_width, &p->logical_height);
-@@ -443,7 +489,7 @@ static struct uu_portal *open_persist(const char *restore, void (*save_token)(co
-     g_variant_unref(results);
+@@ -671,7 +717,8 @@ static struct uu_portal *open_persist(const char *restore, void (*save_token)(co
      g_variant_builder_init(&options, G_VARIANT_TYPE_VARDICT);
-     g_variant_builder_add(&options, "{sv}", "types", g_variant_new_uint32(1));
+     /* 1 monitor; 4 virtual (KDE creates a KWin virtual output for the stream). */
+     g_variant_builder_add(&options, "{sv}", "types", g_variant_new_uint32(source_types));
 -    g_variant_builder_add(&options, "{sv}", "multiple", g_variant_new_boolean(FALSE));
-+    g_variant_builder_add(&options, "{sv}", "multiple", g_variant_new_boolean(portal_monitor_index() >= 0));
-     /* Hidden cursor avoids duplicate pointer; supported since ScreenCast v1. */
-     results = request(p, SCREEN, "SelectSources", &options, 1, error);
-     if (!results) goto done;
++    /* Only monitor sources can be split per output; a virtual output is always one stream. */
++    g_variant_builder_add(&options, "{sv}", "multiple", g_variant_new_boolean(source_types == 1 && portal_monitor_index() >= 0));
+     /* Hidden cursor avoids a duplicate pointer in absolute mode: the viewer draws its own where
+      * it last sent motion. Relative mode has no such position, so the game's cursor has to come
+      * from the compositor. The host flips this at runtime through uu_portal_set_cursor_mode();

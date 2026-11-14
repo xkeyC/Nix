@@ -12,6 +12,19 @@
 # 提供 /lib64/ld-linux-x86-64.so.2 才能直接运行。
 { config, lib, pkgs, ... }:
 
+let
+  # nixpkgs 的 rustup 带一个补丁：安装 toolchain 时把 rustc 等二进制的 ELF 解释器
+  # patchelf 成当时的 glibc store 路径，并把 gcc-ld/ld.lld 换成调用
+  # <当时的 rustup>/nix-support/ld-wrapper.sh 的脚本。rustup 或 glibc 升级、旧路径被
+  # GC 后，已安装的 toolchain 就会坏（链接时报 ld-wrapper.sh: No such file or directory）。
+  # 这里去掉该补丁，toolchain 保持官方原样，由 nix-ld 提供的 /lib64/ld-linux-x86-64.so.2
+  # 运行，不再引用任何 store 路径。改动后已安装的 toolchain 需重装一次才会恢复原样。
+  rustupVanilla = pkgs.rustup.overrideAttrs (old: {
+    patches = [ ];
+    # 上游测试很慢且与补丁无关。
+    doCheck = false;
+  });
+in
 {
   programs.nix-ld = {
     enable = true;
@@ -41,8 +54,8 @@
   home-manager.sharedModules = [
     {
       home.packages = with pkgs; [
-        # Rust（rustup 自带 cargo / rustc，按需安装 toolchain）
-        rustup
+        # Rust（rustup 自带 cargo / rustc，按需安装 toolchain；去掉 patchelf 补丁，见上）
+        rustupVanilla
 
         # Python
         python3

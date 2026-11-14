@@ -24,6 +24,14 @@ let
     mkdir -p "$out/bin"
     ln -s ${pkgs.dwproton-bin.steamcompattool}/files/lib/wine/x86_64-windows/explorer.exe "$out/bin/dwproton-explorer.exe"
   '';
+  rsiLauncher = pkgs.symlinkJoin {
+    name = "rsi-launcher-disable-gpu";
+    paths = [ inputs.nix-citizen.packages.${pkgs.stdenv.hostPlatform.system}.rsi-launcher ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      wrapProgram "$out/bin/rsi-launcher" --append-flags "--disable-gpu"
+    '';
+  };
 in
 {
   # 固定 DWProton 11.0-17，避免随 nixpkgs 更新而自动升级。
@@ -62,7 +70,7 @@ in
   environment.systemPackages = [
     dwproton
     dwprotonExplorer
-    inputs.nix-citizen.packages.${pkgs.stdenv.hostPlatform.system}.rsi-launcher
+    rsiLauncher
   ];
   # Steam 模块同时启用 32 位图形库，供 Steam 和 Windows 游戏使用。
   programs.steam = {

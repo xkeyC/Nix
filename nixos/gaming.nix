@@ -72,6 +72,34 @@ in
     dwprotonExplorer
     rsiLauncher
   ];
+
+  # Steam 的着色器预缓存是关着的（不下载也不上传），NVIDIA 驱动缓存于是落在 ~/.cache/nvidia。
+  # 驱动按 /proc/self/exe 给缓存文件命名，Wine 下所有进程都是同一个 wine64-preloader，
+  # 启动器、explorer.exe、xalia 也在用 Vulkan，每个进程锁一个文件；游戏常常拿不到自己攒下的那份，每次都重新编译。
+  # 这里用 NVIDIA 应用配置文件按 comm（Wine 下即 exe 名，最长 15 字符）给游戏单独的缓存目录。
+  # 驱动不会自己创建这个目录，所以由 tmpfiles 建。
+  home-manager.sharedModules = [
+    ({ config, lib, ... }:
+      let
+        perGameShaderCache = {
+          "Endfield.exe" = "endfield";
+        };
+        cacheDir = name: "${config.xdg.cacheHome}/nvidia-games/${name}";
+      in
+      {
+        home.file.".nv/nvidia-application-profiles-rc.d/per-game-shader-cache.json".text = builtins.toJSON {
+          rules = lib.mapAttrsToList (comm: name: {
+            pattern = { feature = "commname"; matches = comm; };
+            profile = "shader-cache-${name}";
+          }) perGameShaderCache;
+          profiles = lib.mapAttrsToList (_: name: {
+            name = "shader-cache-${name}";
+            settings = [ { key = "GLShaderDiskCachePath"; value = cacheDir name; } ];
+          }) perGameShaderCache;
+        };
+        systemd.user.tmpfiles.rules = map (name: "d ${cacheDir name} 0700 - - -") (lib.attrValues perGameShaderCache);
+      })
+  ];
   # Steam 模块同时启用 32 位图形库，供 Steam 和 Windows 游戏使用。
   programs.steam = {
     enable = true;

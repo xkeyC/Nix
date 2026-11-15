@@ -6,5 +6,6 @@
     ./steamvr.nix      # SteamVR + Steam Link VR（防火墙、vrlink 的 OpenSSL、仪表盘依赖）、WayVR
     ./papertracker.nix # PaperTracker 面捕/眼追（GE-Proton + umu，SteamVR 叠加层）
     ./vivehub.nix      # VIVE Hub：VIVE Ultimate Tracker 配对、建图，带姿态 SDK
+    ./vrcx.nix         # VRCX：VRChat 好友/实例管理（上游 AppImage）
   ];
 }

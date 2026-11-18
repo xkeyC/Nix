@@ -17,7 +17,7 @@
     ./desktop.nix      # KDE Plasma 6 + 字体
     ./storage.nix      # NTFS 数据盘
     ./input-method.nix # Fcitx5 + RIME(雾凇拼音)，以及 KWin 启动输入法
-    ./dns.nix          # 系统 DNS（腾讯 / 阿里 / Cloudflare）
+    ./dns.nix          # 本地 DNS 分流（局域网 / Headscale / 公网）
     ./power-management.nix # 禁用睡眠/休眠，保留 KDE 自动关屏
     ./flclash-tun.nix  # FlClash TUN 模式的特权 Helper
     ./gaming.nix       # Steam 与 DW-Proton、GE-Proton 兼容工具

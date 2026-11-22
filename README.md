@@ -80,12 +80,12 @@ nixpkgs 里没有，或者 nixpkgs 的版本不能用的软件，在本仓库里
 
 | 软件 | 版本 | 用途 | 为什么自己打包 |
 |---|---|---|---|
-| [uu-remote-linux](https://github.com/VallierDev/uu-remote-linux) | 0.2.41 | 用官方 UU 远程客户端控制这台电脑（非官方被控端），附带一个 Linux 控制端 | nixpkgs 没有。另加了一个补丁，让 KDE 下只共享一块显示器 |
+| [uu-remote-linux](https://github.com/VallierDev/uu-remote-linux) | 0.2.64 | 用官方 UU 远程客户端控制这台电脑（非官方被控端），附带一个 Linux 控制端 | nixpkgs 没有。用上游 flake 自带的打包和模块，另加补丁：KDE 下只共享一块显示器、控制端中文字体 |
 | [uuplugin](https://uu.163.com/) | 14.11.2 | UU 主机加速的 Steam Deck 插件 | nixpkgs 没有；上游只提供闭源压缩包 |
 | [Chaos HDR](https://github.com/xkeyC/chaos-hdr) | 0.5.0（fork） | 用 NVIDIA TrueHDR 把 SDR 游戏转成 HDR，失败时换用着色器引擎，Alt+Z 打开控制面板 | nixpkgs 没有；上游只提供 Arch 安装脚本。fork 增加了备用引擎和更多画面选项 |
 | [DLSS5VKLayer](https://github.com/bmitch87/DLSS5VKLayer) | 0.3.2-1 | 在 Linux 游戏里使用 DLSS 5 Neural Rendering | nixpkgs 没有 |
-| [FlClash](https://github.com/chen08209/FlClash) | 0.9.2 | Clash Meta 代理客户端 | nixpkgs 没有 |
-| [Strata](https://github.com/Niko1221/Strata) | 0.2.8（control 0.1.54） | 在本机运行大模型，提供 OpenAI / Anthropic 兼容 API | nixpkgs 没有；上游只提供安装脚本 |
+| [FlClash](https://github.com/chen08209/FlClash) | 0.9.3-2 | Clash Meta 代理客户端 | nixpkgs 没有 |
+| [Strata](https://github.com/Niko1221/Strata) | 0.2.18（control 0.1.64） | 在本机运行大模型，提供 OpenAI / Anthropic 兼容 API | nixpkgs 没有；上游只提供安装脚本 |
 | [VIVE Hub](https://github.com/ViveRoboticsSoftware/vivehub-linux) | 1.0.3 | VIVE Ultimate Tracker 的配对和建图工具，带姿态 SDK | nixpkgs 没有；上游只有闭源预编译包 |
 
 打包文件在 `nixos/packages/`、`nixos/vr/packages/` 和 `nixos/ai/packages/`。以前存档的 ALVR、Monado、WiVRn 配置已删除，需要时从提交 `4f5a0fb` 找回。
@@ -152,9 +152,8 @@ dsh-nix 更新较慢，`deepseek-harness` 可以单独锁定到上游更新的�
 如果新版修改了构建或安装步骤（例如删掉了某个入口），也在那里用 `overrideAttrs` 覆盖。
 
 自己打包的软件，修改 `version` 或 `rev`，把 `hash`（Rust 软件还有 `cargoHash`）改成 `lib.fakeHash`，
-构建一次，再从报错里复制正确的哈希填回去。uu-remote-linux 还要用上游新的 `Cargo.lock` 替换
-`nixos/packages/uu-remote-linux.Cargo.lock`，如果补丁 `uu-remote-linux-portal-monitor.patch` 打不上，
-需要按上游新代码重新制作。Strata 的哈希可以直接从 release 里的 `strata-feed.json` 获取。
+构建一次，再从报错里复制正确的哈希填回去。uu-remote-linux 是 flake 输入，改 `flake.nix` 里的提交号后执行
+`nix flake update uu-remote-linux`；`nixos/packages/uu-remote-linux-*.patch` 打不上时按上游新代码重新制作。Strata 的哈希可以直接从 release 里的 `strata-feed.json` 获取。
 
 ### 清理磁盘
 

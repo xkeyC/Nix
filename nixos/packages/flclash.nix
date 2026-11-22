@@ -1,8 +1,8 @@
-# FlClash 二进制打包（Linux amd64，来自 GitHub Release 的 .deb）
+# FlClash 二进制打包（Linux amd64，来自 archlinuxcn 的构建）
 { lib
 , stdenv
 , fetchurl
-, dpkg
+, zstd
 , autoPatchelfHook
 , makeWrapper
 , wrapGAppsHook3
@@ -26,15 +26,17 @@
 
 stdenv.mkDerivation rec {
   pname = "flclash";
-  version = "0.9.4";
+  # 0.9.4 的 Flutter Wayland 渲染可能只显示左下角，暂时锁定旧版：
+  # https://github.com/flutter/flutter/issues/196476
+  version = "0.9.3-2";
 
   src = fetchurl {
-    url = "https://github.com/chen08209/FlClash/releases/download/v${version}/FlClash-${version}-linux-amd64.deb";
-    sha256 = "sha256-csa4ktdGeu/cZ82KOwUV+lozfojRktNyzaHCHJ0k1H8=";
+    url = "https://archlinux.ccns.ncku.edu.tw/archlinuxcn/x86_64/flclash-${version}-x86_64.pkg.tar.zst";
+    sha256 = "sha256-r3kEL7/EcbcOnDVjBPGKNKK5mtaZDYrpjYE7pJ45Nl0=";
   };
 
   nativeBuildInputs = [
-    dpkg
+    zstd
     autoPatchelfHook
     makeWrapper
     wrapGAppsHook3
@@ -60,24 +62,27 @@ stdenv.mkDerivation rec {
     stdenv.cc.cc.lib
   ];
 
-  unpackCmd = "dpkg-deb -x $curSrc source";
-  sourceRoot = "source";
+  unpackPhase = ''
+    runHook preUnpack
+    tar --zstd -xf "$src"
+    runHook postUnpack
+  '';
 
   installPhase = ''
     runHook preInstall
 
     mkdir -p $out/opt
-    cp -r opt/FlClash $out/opt/FlClash
+    cp -r usr/lib/flclash $out/opt/FlClash
 
     # 只有 Android 会用到；Linux 版不加载，且依赖 libjvm.so
     rm -f $out/opt/FlClash/lib/libdartjni.so
 
-    install -d $out/share/applications $out/share/icons
+    install -d $out/share/applications $out/share/pixmaps
     cp -r usr/share/applications/. $out/share/applications/
-    cp -r usr/share/icons/. $out/share/icons/
+    cp -r usr/share/pixmaps/. $out/share/pixmaps/
 
-    substituteInPlace $out/share/applications/FlClash.desktop \
-      --replace-fail "Exec=FlClash" "Exec=$out/bin/flclash"
+    substituteInPlace $out/share/applications/com.follow.clash.desktop \
+      --replace-fail "Exec=flclash" "Exec=$out/bin/flclash"
 
     runHook postInstall
   '';

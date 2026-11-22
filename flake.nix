@@ -3,9 +3,9 @@
 
   inputs = {
     # 与当前 nixos-unstable channel 相同的 nixpkgs 提交
-    # （nixos-version = 26.11.20261107.f4a03c0）。
+    # （nixos-version = 26.11.20261121.2786a2a）。
     # 升级 nixpkgs：`nix flake update nixpkgs`，然后 `sudo nixos-rebuild switch`。
-    nixpkgs.url = "github:NixOS/nixpkgs/f4a03c008967841f2a0b3cb7c436fc6fc31671f6";
+    nixpkgs.url = "github:NixOS/nixpkgs/2786a2a72088ecf32aea5b3ec52099e6a7cff78f";
 
     # 只用来取比 nixos-unstable 新的个别包：configuration.nix 读这里的 kernels-org.json，同一分支上比 nixos-unstable 新就用它的
     # 版本号和 hash（内核本来就因 ntfs 补丁在本地编译，channel 落后时不用干等）；home-manager.nix 的 codex 同理。
@@ -13,7 +13,7 @@
     # 升级：把提交号换成 master 最新提交（git ls-remote https://github.com/NixOS/nixpkgs refs/heads/master），
     # 再执行 `nix flake update nixpkgs-master`。
     nixpkgs-master = {
-      url = "github:NixOS/nixpkgs/4563b5d1c75e16d35f8beec24404078c28a518ea";
+      url = "github:NixOS/nixpkgs/fd40203fe42eb3930ba941c6b50e43d5568515e1";
       flake = false;
     };
 
@@ -29,7 +29,7 @@
     # 都用 flake = false 按源码目录导入，行为与原来直接 import 相同。
     # 升级：修改 url 里的提交号（或者去掉提交号，再执行 `nix flake update <名字>`）。
     home-manager = {
-      url = "github:nix-community/home-manager/095fef2f265c3c0da4fe315efba8f8a04495ab34";
+      url = "github:nix-community/home-manager/03885bcd0b477bdecebebc57b213b0f8f0826d51";
       flake = false;
     };
     # DSH 的 Nix 打包（Home Manager 模块 + profile 构建）。
@@ -37,10 +37,10 @@
       url = "github:Samuka007/dsh-nix/090ed51b27e65af7c0aadf64dcd7b208030aa3a9";
       flake = false;
     };
-    # DeepSeek Harness 源码，锁定在发布 tag dsh-v0.2.1-rc.5（比 dsh-nix 自身锁定的新，
+    # DeepSeek Harness 源码，锁定在发布 tag dsh-v0.2.2-rc.5（比 dsh-nix 自身锁定的新，
     # 版本号与安装步骤的差异在 home/xkeyc.nix 里覆盖）。
     deepseek-harness = {
-      url = "github:deepseek-ai/deepseek-harness/b830ec950faba0a46dda564be3e2d854afed94f1";
+      url = "github:deepseek-ai/deepseek-harness/9c2670d3bce5275e0d1610272958121af87787bb";
       flake = false;
     };
 
@@ -62,6 +62,13 @@
     # 升级：修改 url 里的提交号，再执行 `nix flake update capture-play`。
     capture-play = {
       url = "github:xkeyC/CapturePlay/24fd15689c620fa7dbeee93cb6e3ff56b320e079";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # uu-remote-linux（非官方 UU 远程被控端）：用上游自带的 Nix 打包和 NixOS 模块，本地补丁在 nixos/uu-remote.nix 叠加。
+    # 锁定在发布 tag v0.2.64。升级：修改 url 里的提交号，再执行 `nix flake update uu-remote-linux`。
+    uu-remote-linux = {
+      url = "github:VallierDev/uu-remote-linux/9708f7556a2ac8c159c1800411b259e4e66e1fb6";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

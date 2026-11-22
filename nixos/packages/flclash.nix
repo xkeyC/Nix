@@ -26,11 +26,11 @@
 
 stdenv.mkDerivation rec {
   pname = "flclash";
-  version = "0.9.2";
+  version = "0.9.4";
 
   src = fetchurl {
     url = "https://github.com/chen08209/FlClash/releases/download/v${version}/FlClash-${version}-linux-amd64.deb";
-    sha256 = "sha256-xso3RG25K1cwnRxwn7piCfLGebbTPPx0j3O46xpZpug=";
+    sha256 = "sha256-csa4ktdGeu/cZ82KOwUV+lozfojRktNyzaHCHJ0k1H8=";
   };
 
   nativeBuildInputs = [

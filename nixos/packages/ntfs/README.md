@@ -1,7 +1,7 @@
 # ntfs 驱动补丁
 
 内核 7.1 起自带的新 ntfs 驱动（Namjae Jeon）的补丁，由 `nixos/storage.nix` 按文件名顺序全部加到
-`boot.kernelPatches`。基于 7.3.4，按顺序全部能用 `git apply` 干净打上（2026-11-11 验证）。
+`boot.kernelPatches`。基于 7.3.5，按顺序全部能用 `git apply` 干净打上（2026-11-22 验证；7.3.5 的 fs/ntfs 只改了 ea.c，三个补丁都还没合入）。
 
 ## 组成
 

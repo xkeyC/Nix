@@ -26,13 +26,13 @@ in
   # - 修正 nixpkgs 的 node 下启动失败的问题（见 postInstall）。
   programs.dsh.package =
     (pkgs.callPackage "${dshNix}/pkgs/dsh.nix" { src = dshSrc; }).overrideAttrs (old: {
-      version = "0.2.1-rc.5";
+      version = "0.2.2-rc.5";
       # src 已通过 callPackage 换成新版，只是 overrideAttrs 看不到。
       __intentionallyOverridingVersion = true;
       # 构建脚本默认用 `git rev-parse HEAD` 取提交号，沙箱里没有 git 仓库。
       env = (old.env or { }) // { DSH_CLIENT_COMMIT_HASH = inputs.deepseek-harness.rev; };
       pnpmDeps = old.pnpmDeps.overrideAttrs {
-        outputHash = "sha256-I9pz1GK1uWwp28RBLfGK4SYqIa9bwf0/hW88kWEuJEQ=";
+        outputHash = "sha256-DAhLDKA85kb9bby+Qdh0WZpgRqfaG9W0VxlRABAmJI4=";
       };
       # node-addon-require-builtin 通过匹配 node 二进制里的 getter 指令获取内部模块，
       # nixpkgs 编译的 node 匹配不上（Unsupported/no-getter），一启动就崩溃。wrapper 本来就带有

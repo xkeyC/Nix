@@ -85,7 +85,7 @@ nixpkgs 里没有，或者 nixpkgs 的版本不能用的软件，在本仓库里
 | [Chaos HDR](https://github.com/xkeyC/chaos-hdr) | 0.5.0（fork） | 用 NVIDIA TrueHDR 把 SDR 游戏转成 HDR，失败时换用着色器引擎，Alt+Z 打开控制面板 | nixpkgs 没有；上游只提供 Arch 安装脚本。fork 增加了备用引擎和更多画面选项 |
 | [DLSS5VKLayer](https://github.com/bmitch87/DLSS5VKLayer) | 0.3.2-1 | 在 Linux 游戏里使用 DLSS 5 Neural Rendering | nixpkgs 没有 |
 | [FlClash](https://github.com/chen08209/FlClash) | 0.9.3-2 | Clash Meta 代理客户端 | nixpkgs 没有 |
-| [Strata](https://github.com/Niko1221/Strata) | 0.2.18（control 0.1.64） | 在本机运行大模型，提供 OpenAI / Anthropic 兼容 API | nixpkgs 没有；上游只提供安装脚本 |
+| [Strata](https://github.com/Niko1221/Strata) | 0.2.19（control 0.1.65） | 在本机运行大模型，提供 OpenAI / Anthropic 兼容 API | nixpkgs 没有；上游只提供安装脚本 |
 | [VIVE Hub](https://github.com/ViveRoboticsSoftware/vivehub-linux) | 1.0.3 | VIVE Ultimate Tracker 的配对和建图工具，带姿态 SDK | nixpkgs 没有；上游只有闭源预编译包 |
 
 打包文件在 `nixos/packages/`、`nixos/vr/packages/` 和 `nixos/ai/packages/`。以前存档的 ALVR、Monado、WiVRn 配置已删除，需要时从提交 `4f5a0fb` 找回。

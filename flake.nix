@@ -7,6 +7,12 @@
     # 升级 nixpkgs：`nix flake update nixpkgs`，然后 `sudo nixos-rebuild switch`。
     nixpkgs.url = "github:NixOS/nixpkgs/2786a2a72088ecf32aea5b3ec52099e6a7cff78f";
 
+    # comma 的预构建命令索引；更新数据库：nix flake update nix-index-database。
+    nix-index-database = {
+      url = "github:nix-community/nix-index-database";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # 只用来取比 nixos-unstable 新的个别包：configuration.nix 读这里的 kernels-org.json，同一分支上比 nixos-unstable 新就用它的
     # 版本号和 hash（内核本来就因 ntfs 补丁在本地编译，channel 落后时不用干等）；home-manager.nix 的 codex 同理。
     # 其余包仍来自上面的 nixpkgs，有 cache。
@@ -88,6 +94,7 @@
         specialArgs = { inherit inputs; };
         modules = [
           ./configuration.nix
+          inputs.nix-index-database.nixosModules.default
           "${home-manager}/nixos"
           "${private}/default.nix"
         ];

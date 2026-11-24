@@ -2,6 +2,8 @@
 { ... }:
 
 {
+  # comma 通过预构建索引查找并临时运行 nixpkgs 中的命令。
+  programs.nix-index-database.comma.enable = true;
   nixpkgs.config.allowUnfree = true;
   nix.settings = {
     substituters = [

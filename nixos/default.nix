@@ -15,6 +15,7 @@
     ./nvidia.nix       # NVIDIA 驱动、Docker + 容器工具链、CUDA
     ./gpu-unlock.nix   # RTX 4090 Tensor Core 解锁（默认启用）
     ./desktop.nix      # KDE Plasma 6 + 字体
+    ./bluetooth.nix    # 蓝牙（BlueZ）+ LDAC 等高码率编码
     ./storage.nix      # NTFS 数据盘
     ./input-method.nix # Fcitx5 + RIME(雾凇拼音)，以及 KWin 启动输入法
     ./dns.nix          # 本地 DNS 分流（局域网 / Headscale / 公网）

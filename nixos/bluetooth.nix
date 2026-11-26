@@ -13,7 +13,11 @@
   # 不用另装。耳机支持 LDAC 时 PipeWire 会优先选它；也可在 Plasma 音频设置里对蓝牙设备手动切换「配置」。
   # LDAC 码率保持默认的自适应（auto，信号差时在 990/660/330 kbps 之间降档），固定 990 kbps 容易断音。
   # SBC-XQ：只支持 SBC 的设备用更高码率的 SBC。
+  # default.rate：A2DP 协商采样率的首选值（默认 48 kHz）。改成 96 kHz 后，WF-1000XM5 的 LDAC 以 96 kHz 运行
+  # （BlueZ 传输配置的频率字节为 0x04）；不支持 96 kHz 的编码或设备会自动退回它支持的采样率。
+  # 系统音频时钟仍是 44.1/48 kHz 时，PipeWire 会把声音重采样到 96 kHz 再编码。
   services.pipewire.wireplumber.extraConfig."50-bluez"."monitor.bluez.properties" = {
     "bluez5.enable-sbc-xq" = true;
+    "bluez5.default.rate" = 96000;
   };
 }

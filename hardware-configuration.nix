@@ -4,7 +4,9 @@
 
 let
   root = "/dev/disk/by-label/nixos";
-  btrfsOpts = [ "compress=zstd:1" "noatime" ];
+  # 不开透明压缩：主要数据是量化权重和 KV 缓存，基本压不动（实测 258 GiB 模型里只有 239 MiB 被 zstd 压缩），
+  # 白费 CPU，还会让缓存目录走不了 direct I/O。
+  btrfsOpts = [ "noatime" ];
   subvol = name: {
     device = root;
     fsType = "btrfs";

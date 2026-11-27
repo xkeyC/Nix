@@ -61,7 +61,7 @@ in
   services.avahi = {
     enable = true;
     nssmdns4 = true;
-    publish = { enable = true; addresses = true; };
+    settings.publish = { disable-publishing = false; publish-addresses = true; };
   };
 
   # 局域网 HTTP 代理（主力机上的代理）。只给 nix-daemon 用，拉 GitHub 上的 flake 输入；

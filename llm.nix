@@ -37,11 +37,66 @@ in
 
   # Gufo（v0.37.0 tag 的提交）。用 default 而不是 release：gufo.cachix.org 只缓存了 default
   # （release 多带官方 extension 和版本号，要本地编译 ROCm 相关部分）。
-  environment.systemPackages = [ gufo ];
   nix.settings = {
     extra-substituters = [ "https://gufo.cachix.org" ];
     extra-trusted-public-keys = [ "gufo.cachix.org-1:rfZe3n4lHINgyoACKzs5EthIZmBNvEyCCtufUpth0PE=" ];
   };
+
+  # 分级 prompt 缓存：内存一级 + SSD 二级（两个引擎各自的实现）。
+  #   halogen：内存级就是 KV 池（HALOGEN_KV_POOL_POSITIONS，默认 2×CTX），SSD 级 HALOGEN_CACHE_DIR，
+  #            每轮只写新增的注意力行，约 27 KiB/token，按 LRU 淘汰。
+  #   Gufo：   内存级 --cache-ram-bytes（0 = 自动：可用内存一半、最多 32 GiB），SSD 级 --cache-disk，
+  #            内存放不下的检查点降级到盘上，约 28 KB/token。
+  # 缓存目录设 +C（btrfs nodatacow）：缓存文件反复覆盖写，COW 会产生碎片；halogen 还要求 direct I/O。
+  # 缓存可丢，所以不要校验和也没关系。+C 只对新建的空目录/文件生效，由 tmpfiles 在创建时设置。
+  systemd.tmpfiles.rules = [
+    "d /srv/cache 0755 xkeyc users -"
+    "h /srv/cache - - - - +C"
+    "d /srv/cache/halogen 0755 xkeyc users -"
+    "d /srv/cache/gufo 0755 xkeyc users -"
+    # tmpfiles 先建目录再设属性，子目录不会从父目录继承，所以逐个设置。
+    "h /srv/cache/halogen - - - - +C"
+    "h /srv/cache/gufo - - - - +C"
+  ];
+
+  # 启动命令：参数固定在这里，环境变量可覆盖。前台运行；后台用
+  #   systemd-run --user --unit=halogen halogen-serve [GGUF 或 .hgn]
+  environment.systemPackages = [
+    gufo
+    (pkgs.writeShellScriptBin "halogen-serve" ''
+      # 用法：halogen-serve [/srv/models/... 里的 GGUF 首个分片或 .hgn]
+      set -eu
+      ckpt=''${1:-/srv/models/unsloth-UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf}
+      dir=$(dirname "$ckpt")
+      exec ${pkgs.podman}/bin/podman run --rm --replace --name halogen -p 8731:8731 \
+        --device /dev/kfd --device /dev/dri --group-add keep-groups \
+        --ipc=host --ulimit memlock=-1:-1 \
+        -e HALOGEN_CHECKPOINT="/models/$(basename "$ckpt")" \
+        -e HALOGEN_MTP_HEAD=/hgn/qwen38-flash-next-mtp.hgn \
+        -e HALOGEN_TOKENIZER=/hgn/tokenizer \
+        -e HALOGEN_CTX="''${HALOGEN_CTX:-102400}" \
+        -e HALOGEN_KV_POOL_POSITIONS="''${HALOGEN_KV_POOL_POSITIONS:-204800}" \
+        -e HALOGEN_CACHE_DIR=/cache \
+        -e HALOGEN_CACHE_DISK_GIB="''${HALOGEN_CACHE_DISK_GIB:-128}" \
+        -v "$dir":/models:ro \
+        -v /srv/models/halogen:/hgn:ro \
+        -v /srv/cache/halogen:/cache \
+        ghcr.io/peonist-ai/halogen-flash-server:0.21.0
+    '')
+    (pkgs.writeShellScriptBin "gufo-serve" ''
+      # 用法：gufo-serve [GGUF 首个分片] [MTP 头]
+      set -eu
+      model=''${1:-/srv/models/unsloth-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf}
+      mtp=''${2:-/srv/models/unsloth-UD-Q4_K_XL/MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf}
+      exec ${gufo}/bin/gufo serve llm --host 0.0.0.0 --port 8080 \
+        --served-model-name flash-next \
+        --model "$model" --speculative mtp --mtp-model "$mtp" \
+        --context "''${GUFO_CONTEXT:-102400}" --sessions "''${GUFO_SESSIONS:-2}" \
+        --cache-ram-bytes "''${GUFO_CACHE_RAM_BYTES:-0}" \
+        --cache-disk /srv/cache/gufo \
+        --cache-disk-bytes "''${GUFO_CACHE_DISK_BYTES:-137438953472}"
+    '')
+  ];
 
   # 局域网访问推理 API：halogen 8731，Gufo 8080。
   networking.firewall.extraCommands = ''

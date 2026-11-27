@@ -57,6 +57,7 @@ in
     # tmpfiles 先建目录再设属性，子目录不会从父目录继承，所以逐个设置。
     "h /srv/cache/halogen - - - - +C"
     "h /srv/cache/gufo - - - - +C"
+    "d /srv/cache/halogen-work 0755 xkeyc users -"
   ];
 
   # 启动命令：参数固定在这里，环境变量可覆盖。前台运行；后台用
@@ -64,24 +65,32 @@ in
   environment.systemPackages = [
     gufo
     (pkgs.writeShellScriptBin "halogen-serve" ''
-      # 用法：halogen-serve [/srv/models/... 里的 GGUF 首个分片或 .hgn]
+      # 用法：halogen-serve [检查点] [容器模式及参数…]
+      #   检查点：/srv/models 下 GGUF 的任一分片，或 .hgn（n-gram 表按标准名放在它旁边）
+      #   不带模式 = 起服务（:8731）；带模式 = 跑镜像自带工具，如
+      #   halogen-serve X.hgn verify X.hgn / ppl X.hgn --corpus … / niah X.hgn …
+      # /srv/models 按原路径只读挂入；/work 可写（参考 dump 等），/cache 是 SSD 级 prompt 缓存。
+      # 注意别挂到容器的 /halogen：那是镜像自己的程序目录。
       set -eu
       ckpt=''${1:-/srv/models/unsloth-UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf}
-      dir=$(dirname "$ckpt")
-      exec ${pkgs.podman}/bin/podman run --rm --replace --name halogen -p 8731:8731 \
+      [ $# -gt 0 ] && shift
+      extra=()
+      # GGUF 不带 halogen 能跑的草稿头，用官方的；.hgn 自带。
+      case "$ckpt" in *.gguf) extra+=(-e HALOGEN_MTP_HEAD=/srv/models/halogen/qwen38-flash-next-mtp.hgn) ;; esac
+      if [ $# -eq 0 ]; then name=halogen; extra+=(-p 8731:8731); else name=halogen-tool; fi
+      exec ${pkgs.podman}/bin/podman run --rm --replace --name "$name" "''${extra[@]}" \
         --device /dev/kfd --device /dev/dri --group-add keep-groups \
         --ipc=host --ulimit memlock=-1:-1 \
-        -e HALOGEN_CHECKPOINT="/models/$(basename "$ckpt")" \
-        -e HALOGEN_MTP_HEAD=/hgn/qwen38-flash-next-mtp.hgn \
-        -e HALOGEN_TOKENIZER=/hgn/tokenizer \
+        -e HALOGEN_CHECKPOINT="$ckpt" \
+        -e HALOGEN_TOKENIZER=/srv/models/halogen/tokenizer \
         -e HALOGEN_CTX="''${HALOGEN_CTX:-102400}" \
         -e HALOGEN_KV_POOL_POSITIONS="''${HALOGEN_KV_POOL_POSITIONS:-204800}" \
         -e HALOGEN_CACHE_DIR=/cache \
         -e HALOGEN_CACHE_DISK_GIB="''${HALOGEN_CACHE_DISK_GIB:-128}" \
-        -v "$dir":/models:ro \
-        -v /srv/models/halogen:/hgn:ro \
+        -v /srv/models:/srv/models:ro \
         -v /srv/cache/halogen:/cache \
-        ghcr.io/peonist-ai/halogen-flash-server:0.21.0
+        -v /srv/cache/halogen-work:/work \
+        ghcr.io/peonist-ai/halogen-flash-server:0.21.0 "$@"
     '')
     (pkgs.writeShellScriptBin "gufo-serve" ''
       # 用法：gufo-serve [GGUF 首个分片] [MTP 头]

@@ -17,10 +17,45 @@ in
   # Strix Halo（gfx1151）在新内核上支持更完整。
   boot.kernelPackages = pkgs.linuxPackages_latest;
 
-  # 网络：NetworkManager（Wi-Fi 连接文件安装时从 live 系统拷入，不进 git）。
-  # 两个 RTL8125 2.5G 网口插线即自动 DHCP。
+  # 网络：NetworkManager。有线优先，Wi-Fi 备用。
+  #   * 两个 RTL8125 2.5G 网口（eno1 68:1d:ef:67:37:fa，enp196s0 68:1d:ef:67:37:fb）各一个 DHCP 配置，
+  #     插线即连。
+  #   * Wi-Fi 连接文件（XK_5G）是安装时从 live 系统拷入的，含密码，不进 git。
+  #   * 有线和 Wi-Fi 可以同时在线，默认路由按 metric 选：有线 100，Wi-Fi 600。拔掉网线后
+  #     自动走 Wi-Fi，不用重连。
   networking.hostName = "ai-max-395";
-  networking.networkmanager.enable = true;
+  networking.networkmanager = {
+    enable = true;
+    # 不再自动生成「有线连接 N」，有线只用下面声明的配置。
+    settings.main.no-auto-default = "*";
+    # 没写 metric 的连接按类型取默认值（Wi-Fi 配置文件不在 git 里，靠这里统一）。
+    settings.connection-ethernet = {
+      match-device = "type:ethernet";
+      "ipv4.route-metric" = 100;
+      "ipv6.route-metric" = 100;
+    };
+    settings.connection-wifi = {
+      match-device = "type:wifi";
+      "ipv4.route-metric" = 600;
+      "ipv6.route-metric" = 600;
+    };
+    ensureProfiles.profiles = let
+      wired = ifname: {
+        connection = {
+          id = "wired-${ifname}";
+          type = "ethernet";
+          interface-name = ifname;
+          autoconnect = true;
+          autoconnect-priority = 100;
+        };
+        ipv4 = { method = "auto"; route-metric = 100; };
+        ipv6 = { method = "auto"; addr-gen-mode = "stable-privacy"; route-metric = 100; };
+      };
+    in {
+      wired-eno1 = wired "eno1";
+      wired-enp196s0 = wired "enp196s0";
+    };
+  };
   networking.firewall.enable = true;
   # 局域网可用 ai-max-395.local 访问。
   services.avahi = {

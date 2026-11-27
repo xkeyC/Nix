@@ -21,6 +21,10 @@ in
   # halogen 文档：amdgpu.vm_update_mode / noretry / sg_display 没测过收益，且 noretry=0 会把
   # 缺页错误变成无声挂起，建议不加；vm.compaction_proactiveness 保持默认。
 
+  # swap 只有 zram（configuration.nix 的 zramSwap）：按页换入，不做机械盘式的 8 页预读。
+  # zram 留着：权重是 mmap 的文件页、没有锁住，没有 swap 时内存紧张只能踢权重。
+  boot.kernel.sysctl."vm.page-cluster" = 0;
+
   # 权重和 GPU 可见的主机缓冲区要 mlock；默认 8 MiB 时 GPU 会因内存整理卡顿数秒。
   systemd.settings.Manager.DefaultLimitMEMLOCK = "infinity";
   security.pam.loginLimits = [

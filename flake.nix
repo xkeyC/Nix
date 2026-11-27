@@ -21,6 +21,7 @@
         ./configuration.nix
         ./llm.nix
         ./halogen.nix
+        ./xprobe.nix
       ];
     };
   };

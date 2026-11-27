@@ -71,8 +71,9 @@ in
   #   systemd-run --user --unit=halogen halogen-serve [GGUF 或 .hgn]
   #
   # 动态上下文：上下文设成原生 262,144，它只是「单个请求的上限」，内存按实际用量占：
-  #   halogen：KV 池 524,288 个位置（约 28 KiB/个）由所有请求共享，每个请求按 提示+max_tokens 借用，
-  #            可以同时放 1 个 262k + 若干 100k，或 4 个 131k。
+  #   halogen：KV 池 786,432 个位置（约 28 KiB/个，3 个完整 262k）由所有请求共享，每个请求按
+  #            提示+max_tokens 借用。这是甜点值：v2 检查点（62 GiB）在默认 20 GiB 预留下正好装得下（GGUF 用 524,288），
+  #            不挤占 n-gram 表的页缓存；再大就得压 HALOGEN_HOST_RESERVE_GIB（长提示会读盘变慢）或开 KV8。
   #   Gufo：   每个 session 按完整上下文预留（约 27.5 KiB/token），2 个 session 约 13.7 GiB；
   #            Flash-Next 上超出的 session 共享内存，放得下才开跑。
   environment.systemPackages = [
@@ -90,15 +91,21 @@ in
       [ $# -gt 0 ] && shift
       extra=()
       # GGUF 不带 halogen 能跑的草稿头，用官方的；.hgn 自带。
-      case "$ckpt" in *.gguf) extra+=(-e HALOGEN_MTP_HEAD=/srv/models/halogen/qwen38-flash-next-mtp.hgn) ;; esac
+      # 池子甜点值按检查点定：v2 .hgn 权重 62 GiB → 786,432；GGUF 权重 72 GiB → 524,288（再大会被自动减半）。
+      case "$ckpt" in
+        *.gguf) extra+=(-e HALOGEN_MTP_HEAD=/srv/models/halogen/qwen38-flash-next-mtp.hgn); pool=524288 ;;
+        *) pool=786432 ;;
+      esac
       if [ $# -eq 0 ]; then name=halogen; extra+=(-p 8731:8731); else name=halogen-tool; fi
+      # 宿主机上设置的任何 HALOGEN_* 都原样传进容器（如 HALOGEN_HOST_RESERVE_GIB、HALOGEN_KV8）。
+      for v in $(compgen -e | grep '^HALOGEN_' || true); do extra+=(-e "$v=''${!v}"); done
       exec ${pkgs.podman}/bin/podman run --rm --replace --name "$name" "''${extra[@]}" \
         --device /dev/kfd --device /dev/dri --group-add keep-groups \
         --ipc=host --ulimit memlock=-1:-1 \
         -e HALOGEN_CHECKPOINT="$ckpt" \
         -e HALOGEN_TOKENIZER=/srv/models/halogen/tokenizer \
         -e HALOGEN_CTX="''${HALOGEN_CTX:-262144}" \
-        -e HALOGEN_KV_POOL_POSITIONS="''${HALOGEN_KV_POOL_POSITIONS:-524288}" \
+        -e HALOGEN_KV_POOL_POSITIONS="''${HALOGEN_KV_POOL_POSITIONS:-$pool}" \
         -e HALOGEN_CACHE_DIR=/cache \
         -e HALOGEN_CACHE_DISK_GIB="''${HALOGEN_CACHE_DISK_GIB:-128}" \
         -v /srv/models:/srv/models:ro \

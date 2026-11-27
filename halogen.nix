@@ -50,6 +50,10 @@ in
       HALOGEN_CACHE_DISK_GIB = "128";
       # 请求没指定时的思考档位。模板默认 xhigh（想得很久）；medium 实测 99k 首个答案只比关思考晚约 3 s。
       HALOGEN_REASONING_EFFORT = "medium";
+      # 读图：官方视觉塔（peonist-ai/halogen-qwen3.8-flash-next，sha256 d62e0ae5…，三个版本相同）。
+      # abliteration 只改了主干的 149 个 residual writer，视觉塔与 base 模型相同，所以直接用官方的。
+      # 约占 2 GiB 内存（池子预算里算进去了）；图片只收 data: URL / base64，不会去拉 http 链接。
+      HALOGEN_VISION_TOWER = "/srv/models/halogen-abliterated/qwen38-flash-next-vision.hgn";
     };
     extraOptions = [
       "--ipc=host"

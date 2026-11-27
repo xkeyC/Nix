@@ -72,6 +72,28 @@ in
     no_proxy = "127.0.0.1,localhost,192.168.0.0/16,.local,mirror.sjtu.edu.cn,mirrors.tuna.tsinghua.edu.cn,mirrors.ustc.edu.cn";
   };
 
+  # Tailscale：接入 xkeyc.com 上的 Headscale，节点名 395-xkeyc。
+  # 首次登录用的一次性 pre-auth key 在 /var/lib/tailscale/authkey（不进 git，登录后即失效）。
+  # 与主力机一致：只连 tailnet 节点，不接收子网路由 / DNS，不用也不发布出口节点。
+  services.tailscale = {
+    enable = true;
+    openFirewall = true;
+    useRoutingFeatures = "none";
+    authKeyFile = "/var/lib/tailscale/authkey";
+    extraUpFlags = [
+      "--login-server=https://hsapi.xkeyc.com"
+      "--hostname=395-xkeyc"
+    ];
+    extraSetFlags = [
+      "--hostname=395-xkeyc"
+      "--accept-dns=false"
+      "--accept-routes=false"
+      "--exit-node="
+      "--advertise-exit-node=false"
+      "--advertise-routes="
+    ];
+  };
+
   time.timeZone = "Asia/Singapore";
   i18n.defaultLocale = "zh_CN.UTF-8";
 

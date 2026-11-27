@@ -32,6 +32,11 @@ in
   # 本机没有 ACPI platform_profile，功耗墙（TDP）只能在 BIOS 里调。
   powerManagement.cpuFreqGovernor = "performance";
 
+  # ryzen_smu：让 ryzenadj 读（必要时改）SMU 的功耗墙。内核 STRICT_DEVMEM 挡住了 /dev/mem 回退路径。
+  # 只装模块不会改任何设置；实测四种负载都卡在 120 W 持续 / ~140 W 短时。
+  # GPU DPM 强制 high 实测无收益（prefill +0.2%，decode 不变，空闲 +6 W），保持 auto。
+  hardware.cpu.amd.ryzen-smu.enable = true;
+
   # halogen 只发布容器镜像；Gufo 也可以用容器，这里用 Nix 包。
   virtualisation.podman.enable = true;
 
@@ -64,6 +69,7 @@ in
   #   systemd-run --user --unit=halogen halogen-serve [GGUF 或 .hgn]
   environment.systemPackages = [
     gufo
+    pkgs.ryzenadj
     (pkgs.writeShellScriptBin "halogen-serve" ''
       # 用法：halogen-serve [检查点] [容器模式及参数…]
       #   检查点：/srv/models 下 GGUF 的任一分片，或 .hgn（n-gram 表按标准名放在它旁边）

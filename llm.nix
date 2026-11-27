@@ -69,6 +69,12 @@ in
 
   # 启动命令：参数固定在这里，环境变量可覆盖。前台运行；后台用
   #   systemd-run --user --unit=halogen halogen-serve [GGUF 或 .hgn]
+  #
+  # 动态上下文：上下文设成原生 262,144，它只是「单个请求的上限」，内存按实际用量占：
+  #   halogen：KV 池 524,288 个位置（约 28 KiB/个）由所有请求共享，每个请求按 提示+max_tokens 借用，
+  #            可以同时放 1 个 262k + 若干 100k，或 4 个 131k。
+  #   Gufo：   每个 session 按完整上下文预留（约 27.5 KiB/token），2 个 session 约 13.7 GiB；
+  #            Flash-Next 上超出的 session 共享内存，放得下才开跑。
   environment.systemPackages = [
     gufo
     pkgs.ryzenadj
@@ -91,8 +97,8 @@ in
         --ipc=host --ulimit memlock=-1:-1 \
         -e HALOGEN_CHECKPOINT="$ckpt" \
         -e HALOGEN_TOKENIZER=/srv/models/halogen/tokenizer \
-        -e HALOGEN_CTX="''${HALOGEN_CTX:-102400}" \
-        -e HALOGEN_KV_POOL_POSITIONS="''${HALOGEN_KV_POOL_POSITIONS:-204800}" \
+        -e HALOGEN_CTX="''${HALOGEN_CTX:-262144}" \
+        -e HALOGEN_KV_POOL_POSITIONS="''${HALOGEN_KV_POOL_POSITIONS:-524288}" \
         -e HALOGEN_CACHE_DIR=/cache \
         -e HALOGEN_CACHE_DISK_GIB="''${HALOGEN_CACHE_DISK_GIB:-128}" \
         -v /srv/models:/srv/models:ro \
@@ -108,7 +114,7 @@ in
       exec ${gufo}/bin/gufo serve llm --host 0.0.0.0 --port 8080 \
         --served-model-name flash-next \
         --model "$model" --speculative mtp --mtp-model "$mtp" \
-        --context "''${GUFO_CONTEXT:-102400}" --sessions "''${GUFO_SESSIONS:-2}" \
+        --context "''${GUFO_CONTEXT:-262144}" --sessions "''${GUFO_SESSIONS:-2}" \
         --cache-ram-bytes "''${GUFO_CACHE_RAM_BYTES:-0}" \
         --cache-disk /srv/cache/gufo \
         --cache-disk-bytes "''${GUFO_CACHE_DISK_BYTES:-137438953472}"

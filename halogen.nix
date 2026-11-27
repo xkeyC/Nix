@@ -50,6 +50,13 @@ in
       HALOGEN_CACHE_DISK_GIB = "128";
       # 请求没指定时的思考档位。模板默认 xhigh（想得很久）；medium 实测 99k 首个答案只比关思考晚约 3 s。
       HALOGEN_REASONING_EFFORT = "medium";
+      # 采样默认值：Qwen 官方模型卡（huggingface.co/Qwen/Qwen3.8-Flash-Next，Best Practices）思考模式的设置，
+      # 与 tokenizer 自带的 generation_config.json 相同。只填请求没带的字段；不设时 halogen 默认贪心（temperature 0）。
+      # 卡上其余三项 min_p 0、presence_penalty 0、repetition_penalty 1.0 正是 halogen 的默认值，不用设。
+      # 关思考（instruct）时卡上推荐 0.7 / 0.8 / 20 + presence_penalty 1.5，服务端分不出来，需要的客户端自己带。
+      HALOGEN_TEMPERATURE = "1.0";
+      HALOGEN_TOP_P = "0.95";
+      HALOGEN_TOP_K = "20";
       # 读图：官方视觉塔（peonist-ai/halogen-qwen3.8-flash-next，sha256 d62e0ae5…，三个版本相同）。
       # abliteration 只改了主干的 149 个 residual writer，视觉塔与 base 模型相同，所以直接用官方的。
       # 约占 2 GiB 内存（池子预算里算进去了）；图片只收 data: URL / base64，不会去拉 http 链接。

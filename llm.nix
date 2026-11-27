@@ -59,7 +59,9 @@ in
   systemd.tmpfiles.rules = [
     "d /srv/cache 0755 xkeyc users -"
     "h /srv/cache - - - - +C"
-    "d /srv/cache/halogen 0755 xkeyc users -"
+    # halogen 现在是 rootful 服务且 cap-drop all（容器里的 root 没有 DAC_OVERRIDE），目录必须归 root，
+    # 否则 SSD 缓存层 Permission denied 直接关闭。
+    "d /srv/cache/halogen 0700 root root -"
     "d /srv/cache/gufo 0755 xkeyc users -"
     # tmpfiles 先建目录再设属性，子目录不会从父目录继承，所以逐个设置。
     "h /srv/cache/halogen - - - - +C"

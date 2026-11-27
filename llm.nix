@@ -67,8 +67,8 @@ in
     "d /srv/cache/halogen-work 0755 xkeyc users -"
   ];
 
-  # 启动命令：参数固定在这里，环境变量可覆盖。前台运行；后台用
-  #   systemd-run --user --unit=halogen halogen-serve [GGUF 或 .hgn]
+  # halogen 常驻服务见 halogen.nix（podman-halogen.service，开机自启）。gufo-serve 手动起：
+  #   systemctl stop podman-halogen; systemd-run --user --unit=gufo gufo-serve   （两者内存装不下同时跑）
   #
   # 动态上下文：上下文设成原生 262,144，它只是「单个请求的上限」，内存按实际用量占：
   #   halogen：KV 池 786,432 个位置（约 28 KiB/个，3 个完整 262k）由所有请求共享，每个请求按
@@ -79,37 +79,27 @@ in
   environment.systemPackages = [
     gufo
     pkgs.ryzenadj
-    (pkgs.writeShellScriptBin "halogen-serve" ''
-      # 用法：halogen-serve [检查点] [容器模式及参数…]
+    (pkgs.writeShellScriptBin "halogen-tool" ''
+      # 用法：halogen-tool 检查点 模式 [参数…]   跑 halogen 镜像自带的检查工具（rootless，不起服务）
+      #   halogen-tool X.hgn verify X.hgn / inspect X.hgn / ppl X.hgn --corpus … / niah X.hgn …
       #   检查点：/srv/models 下 GGUF 的任一分片，或 .hgn（n-gram 表按标准名放在它旁边）
-      #   不带模式 = 起服务（:8731）；带模式 = 跑镜像自带工具，如
-      #   halogen-serve X.hgn verify X.hgn / ppl X.hgn --corpus … / niah X.hgn …
-      # /srv/models 按原路径只读挂入；/work 可写（参考 dump 等），/cache 是 SSD 级 prompt 缓存。
-      # 注意别挂到容器的 /halogen：那是镜像自己的程序目录。
+      # 常驻服务是 podman-halogen.service（halogen.nix），两者别同时跑：内存装不下。
+      # --network=none：闭源二进制，工具模式完全不需要网络。
+      # /srv/models 按原路径只读挂入；/work 可写（参考 dump 等）。别挂到容器的 /halogen：那是镜像自己的程序目录。
+      # 宿主机上设置的任何 HALOGEN_* 都按值传进容器（如 HALOGEN_KV_POOL_POSITIONS、HALOGEN_KV8）。
       set -eu
-      ckpt=''${1:-/srv/models/unsloth-UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf}
-      [ $# -gt 0 ] && shift
+      [ $# -ge 2 ] || { echo "用法：halogen-tool 检查点 模式 [参数…]" >&2; exit 2; }
+      ckpt=$1; shift
       extra=()
       # GGUF 不带 halogen 能跑的草稿头，用官方的；.hgn 自带。
-      # 池子甜点值按检查点定：v2 .hgn 权重 62 GiB → 786,432；GGUF 权重 72 GiB → 524,288（再大会被自动减半）。
-      case "$ckpt" in
-        *.gguf) extra+=(-e HALOGEN_MTP_HEAD=/srv/models/halogen/qwen38-flash-next-mtp.hgn); pool=524288 ;;
-        *) pool=786432 ;;
-      esac
-      if [ $# -eq 0 ]; then name=halogen; extra+=(-p 8731:8731); else name=halogen-tool; fi
-      # 宿主机上设置的任何 HALOGEN_* 都原样传进容器（如 HALOGEN_HOST_RESERVE_GIB、HALOGEN_KV8）。
+      case "$ckpt" in *.gguf) extra+=(-e HALOGEN_MTP_HEAD=/srv/models/halogen/qwen38-flash-next-mtp.hgn) ;; esac
       for v in $(compgen -e | grep '^HALOGEN_' || true); do extra+=(-e "$v=''${!v}"); done
-      exec ${pkgs.podman}/bin/podman run --rm --replace --name "$name" "''${extra[@]}" \
+      exec ${pkgs.podman}/bin/podman run --rm --replace --name halogen-tool --network=none "''${extra[@]}" \
         --device /dev/kfd --device /dev/dri --group-add keep-groups \
-        --ipc=host --ulimit memlock=-1:-1 \
+        --ipc=host --ulimit memlock=-1:-1 --cap-drop=all --security-opt=no-new-privileges \
         -e HALOGEN_CHECKPOINT="$ckpt" \
         -e HALOGEN_TOKENIZER=/srv/models/halogen/tokenizer \
-        -e HALOGEN_CTX="''${HALOGEN_CTX:-262144}" \
-        -e HALOGEN_KV_POOL_POSITIONS="''${HALOGEN_KV_POOL_POSITIONS:-$pool}" \
-        -e HALOGEN_CACHE_DIR=/cache \
-        -e HALOGEN_CACHE_DISK_GIB="''${HALOGEN_CACHE_DISK_GIB:-128}" \
         -v /srv/models:/srv/models:ro \
-        -v /srv/cache/halogen:/cache \
         -v /srv/cache/halogen-work:/work \
         ghcr.io/peonist-ai/halogen-flash-server:0.21.0 "$@"
     '')
@@ -124,15 +114,14 @@ in
         --context "''${GUFO_CONTEXT:-262144}" --sessions "''${GUFO_SESSIONS:-2}" \
         --cache-ram-bytes "''${GUFO_CACHE_RAM_BYTES:-0}" \
         --cache-disk /srv/cache/gufo \
-        --cache-disk-bytes "''${GUFO_CACHE_DISK_BYTES:-137438953472}"
+        --cache-disk-bytes "''${GUFO_CACHE_DISK_BYTES:-137438953472}" \
+        --reasoning-effort "''${GUFO_REASONING_EFFORT:-medium}"
     '')
   ];
 
-  # 局域网访问推理 API：halogen 8731，Gufo 8080。
+  # 局域网 / tailnet 访问 Gufo 的 API（8080）。halogen 的 8731 在 halogen.nix 里限制。
   networking.firewall.extraCommands = ''
-    for port in 8731 8080; do
-      iptables -A nixos-fw -p tcp --dport $port -s 192.168.0.0/16 -j nixos-fw-accept
-      iptables -A nixos-fw -p tcp --dport $port -s 100.64.0.0/10 -j nixos-fw-accept
-    done
+    iptables -A nixos-fw -p tcp --dport 8080 -s 192.168.0.0/16 -j nixos-fw-accept
+    iptables -A nixos-fw -p tcp --dport 8080 -s 100.64.0.0/10 -j nixos-fw-accept
   '';
 }

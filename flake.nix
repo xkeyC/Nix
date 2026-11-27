@@ -20,6 +20,7 @@
         ./hardware-configuration.nix
         ./configuration.nix
         ./llm.nix
+        ./halogen.nix
       ];
     };
   };

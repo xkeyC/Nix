@@ -35,6 +35,8 @@ in
   # ryzen_smu：让 ryzenadj 读（必要时改）SMU 的功耗墙。内核 STRICT_DEVMEM 挡住了 /dev/mem 回退路径。
   # 只装模块不会改任何设置；实测四种负载都卡在 120 W 持续 / ~140 W 短时。
   # GPU DPM 强制 high 实测无收益（prefill +0.2%，decode 不变，空闲 +6 W），保持 auto。
+  # 功耗墙提到 140 W（BIOS 把 STAPM 封顶在 132 W，实际持续约 134 W）实测：30k prefill
+  # 1,891 → 1,910 tok/s（+1%），decode 不变，温度 +3~4 °C。不值得，保持 BIOS 的 120 W，不持久化 ryzenadj 设置。
   hardware.cpu.amd.ryzen-smu.enable = true;
 
   # halogen 只发布容器镜像；Gufo 也可以用容器，这里用 Nix 包。

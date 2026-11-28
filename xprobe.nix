@@ -19,12 +19,14 @@ in
     after = [ "network-online.target" "podman-halogen.service" ];
     serviceConfig = {
       # 推理服务：halogen 的 /metrics、/health、/cache（经 podman 发布的 8731，本机访问不受入站限制）。
-      ExecStart = "/srv/xprobe/xprobe agent -listen :${toString port} -token-file %d/token -halogen http://127.0.0.1:8731";
+      # 累计 token（跨 halogen 和 agent 重启）存在 StateDirectory，每分钟写一次。
+      ExecStart = "/srv/xprobe/xprobe agent -listen :${toString port} -token-file %d/token -halogen http://127.0.0.1:8731 -state-dir %S/xprobe-agent";
       LoadCredential = "token:/var/lib/xprobe/token";
       DynamicUser = true;
       Restart = "always";
       RestartSec = 5;
-      # 只读 /proc、/sys（amdgpu、hwmon）和 statfs，不需要写任何东西。
+      # 只读 /proc、/sys（amdgpu、hwmon）和 statfs；唯一写的是 StateDirectory 里的累计值。
+      StateDirectory = "xprobe-agent";
       ProtectSystem = "strict";
       ProtectHome = "read-only";
       PrivateTmp = true;

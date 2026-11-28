@@ -1,5 +1,5 @@
 # xprobe agent：给 xkeyc-linux-server 上的 xprobe hub（home.xkeyc.com）提供本机指标和推理服务负载。
-# 项目：/mnt/application/Projects/xprobe（暂未发布；hub 部署见其 deploy/linux-server/）。
+# 项目 xkeyCProbe（命令名 xprobe）：GitHub 私有库 xkeyC/xkeyCProbe，本地 /mnt/application/Projects/xprobe；hub 部署见其 deploy/linux-server/。
 #
 # 部署外的两样（不进 git）：
 #   1. 二进制：主力机上构建后 scp 到 /srv/xprobe/xprobe（静态链接，root:root 0755）。
